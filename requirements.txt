@@ -1,0 +1,9 @@
+libclang
+typer
+rich
+jinja2
+pyyaml
+google-generativeai
+openai
+python-dotenv
+requests

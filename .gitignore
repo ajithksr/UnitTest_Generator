@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Build
+build/
+bin/
+lib/
+CMakeLists.txt
+*-strategy.yaml
+*-strategy.md
+*_generated.cpp
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store

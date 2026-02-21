@@ -1,0 +1,43 @@
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+#include "{{ source_filename }}"
+
+// Mocks
+// {% for mock in mocks %}
+// {{ mock }}
+// {% endfor %}
+
+// Test Suite for class {{ class_name }}
+class {{ class_name }}Test : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Setup code
+    }
+
+    void TearDown() override {
+        // Teardown code
+    }
+
+    // Instance of the class being tested
+    {{ namespace }}::{{ class_name }} obj;
+};
+
+{% for func in functions %}
+{% if not func.is_covered %}
+TEST_F({{ class_name }}Test, {{ func.name }}_Coverage) {
+    {% if func.test_body %}
+{{ func.test_body }}
+    {% else %}
+    // TODO: Implement test for {{ func.name }}
+    // Signature: {{ func.signature }}
+    
+    // Suggested Strategy:
+    {% for case in func.suggested_test_cases %}
+    // - {{ case }}
+    {% endfor %}
+    
+    FAIL() << "Test not implemented";
+    {% endif %}
+}
+{% endif %}
+{% endfor %}

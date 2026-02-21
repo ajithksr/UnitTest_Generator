@@ -1,0 +1,46 @@
+source_file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+functions:
+- name: add
+  signature: add(int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 6
+  is_covered: true
+  existing_tests:
+  - SimpleMathTest.AddTests
+  class_name: SimpleMath
+  namespace: MathLib
+  suggested_test_cases:
+  - Additional Verification
+  mocks_needed: []
+  mcdc_cases: []
+- name: subtract
+  signature: subtract(int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 10
+  is_covered: true
+  existing_tests:
+  - SimpleMathStub.SubtractTest
+  class_name: SimpleMath
+  namespace: MathLib
+  suggested_test_cases:
+  - Additional Verification
+  mocks_needed: []
+  mcdc_cases: []
+- name: divide
+  signature: divide(int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 14
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - 'Failure Injection: invalid_argument throws/returns error'
+  - 'MCDC: Verify 2 logical paths'
+  mocks_needed:
+  - Mock for invalid_argument
+  mcdc_cases:
+  - 'MCDC: Complexity is 2. Need to cover all path combinations.'
