@@ -3,65 +3,144 @@ from typing import List, Dict, Optional, Any
 import os
 import sys
 
-# Configure libclang if needed.
-# For now, we assume it's in the path or installed via pip.
+# Map clang AccessSpecifier enum to readable strings
+_ACCESS_MAP = {
+    clang.cindex.AccessSpecifier.PUBLIC: "public",
+    clang.cindex.AccessSpecifier.PROTECTED: "protected",
+    clang.cindex.AccessSpecifier.PRIVATE: "private",
+    clang.cindex.AccessSpecifier.NONE: "none",
+    clang.cindex.AccessSpecifier.INVALID: "none",
+}
+
+# Cursor kinds we want to capture: free functions, member methods, constructors, destructors
+_FUNCTION_KINDS = {
+    clang.cindex.CursorKind.FUNCTION_DECL,
+    clang.cindex.CursorKind.CXX_METHOD,
+    clang.cindex.CursorKind.CONSTRUCTOR,
+    clang.cindex.CursorKind.DESTRUCTOR,
+}
+
+# C-compatible file extensions
+_C_EXTENSIONS = {".c", ".h"}
+# C++-compatible file extensions
+_CPP_EXTENSIONS = {".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".hh"}
+
+
+def _detect_language(file_path: str) -> str:
+    """Return 'C' or 'C++' based on file extension."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in _C_EXTENSIONS:
+        return "C"
+    return "C++"
+
+
+def _parse_args_for_file(file_path: str) -> List[str]:
+    """Return appropriate clang parse flags for the given source file."""
+    lang = _detect_language(file_path)
+    if lang == "C":
+        return ["-x", "c", "-std=c11"]
+    else:
+        return ["-x", "c++", "-std=c++14"]
+
 
 class CodeAnalyzer:
     def __init__(self):
         self.index = clang.cindex.Index.create()
 
     def analyze_file(self, file_path: str) -> List[Dict[str, Any]]:
-        """Analyzes a single C++ source file and extracts function details."""
+        """Analyzes a single C or C++ source file and extracts function details."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Resolve absolute path to ensure matching works
         abs_file_path = os.path.abspath(file_path)
-        
-        # Parse the file
-        tu = self.index.parse(abs_file_path, args=['-x', 'c++', '-std=c++14'])
-        
+        parse_args = _parse_args_for_file(abs_file_path)
+        language = _detect_language(abs_file_path)
+
+        tu = self.index.parse(abs_file_path, args=parse_args)
+
+        if tu.diagnostics:
+            for diag in tu.diagnostics:
+                if diag.severity >= clang.cindex.Diagnostic.Warning:
+                    print(f"[WARN] Clang: {diag.spelling} at {diag.location}", file=sys.stderr)
+
         functions = []
-        self._traverse(tu.cursor, functions, abs_file_path)
+        self._traverse(tu.cursor, functions, abs_file_path, language=language)
         return functions
 
-    def _traverse(self, cursor, functions: List[Dict[str, Any]], target_file: str, namespace: str = ""):
-        # Update namespace context
+    def _traverse(
+        self,
+        cursor,
+        functions: List[Dict[str, Any]],
+        target_file: str,
+        namespace: str = "",
+        language: str = "C++",
+    ):
+        """Recursively traverse the AST and collect function/method info."""
         current_namespace = namespace
         if cursor.kind == clang.cindex.CursorKind.NAMESPACE:
-            current_namespace = f"{namespace}::{cursor.displayname}" if namespace else cursor.displayname
+            current_namespace = (
+                f"{namespace}::{cursor.displayname}" if namespace else cursor.displayname
+            )
 
-        # Check for function or method declarations
-        if cursor.kind in [clang.cindex.CursorKind.FUNCTION_DECL, clang.cindex.CursorKind.CXX_METHOD]:
-            # Filter: Only care about functions defined/declared in the target file
+        if cursor.kind in _FUNCTION_KINDS:
             if cursor.location.file and os.path.abspath(cursor.location.file.name) == target_file:
-                 # We prefer definitions to analyze implementation details (dependencies)
-                 # But if it's just a declaration in the .cpp (unlikely) or .hpp, we take it.
-                 # If we see the definition later, it might duplicate. 
-                 # For now, let's take everything in the file and we can dedup or filter for is_definition later.
-                 
-                func_info = self._extract_function_info(cursor, current_namespace)
+                func_info = self._extract_function_info(cursor, current_namespace, language)
                 functions.append(func_info)
 
-        # Recurse
         for child in cursor.get_children():
-            self._traverse(child, functions, target_file, current_namespace)
+            self._traverse(child, functions, target_file, current_namespace, language)
 
-    def _extract_function_info(self, cursor, namespace) -> Dict[str, Any]:
+    def _extract_function_info(self, cursor, namespace: str, language: str) -> Dict[str, Any]:
+        """Extract rich metadata about a function or method cursor."""
+        # Parameters
         params = []
         for arg in cursor.get_arguments():
-            params.append({
-                "name": arg.displayname,
-                "type": arg.type.spelling
-            })
+            params.append(
+                {
+                    "name": arg.displayname,
+                    "type": arg.type.spelling,
+                }
+            )
 
-        # Determine if it's a class method
+        # Class membership
         class_name = None
-        current = cursor.semantic_parent
-        if current and current.kind in [clang.cindex.CursorKind.CLASS_DECL, clang.cindex.CursorKind.STRUCT_DECL]:
-            class_name = current.displayname
+        parent = cursor.semantic_parent
+        if parent and parent.kind in (
+            clang.cindex.CursorKind.CLASS_DECL,
+            clang.cindex.CursorKind.STRUCT_DECL,
+            clang.cindex.CursorKind.CLASS_TEMPLATE,
+        ):
+            class_name = parent.displayname
 
-        # Extract dependencies (function calls within this function)
+        # Static detection
+        # For C/C++ free functions: storage-class == STATIC means file-static
+        # For C++ methods: is_static_method()
+        is_static = False
+        if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
+            is_static = cursor.is_static_method()
+        elif cursor.kind == clang.cindex.CursorKind.FUNCTION_DECL:
+            is_static = cursor.storage_class == clang.cindex.StorageClass.STATIC
+
+        # Access specifier (only meaningful for class members)
+        access_specifier = _ACCESS_MAP.get(cursor.access_specifier, "none")
+
+        # Function kind label
+        kind_label = "free_function"
+        if cursor.kind == clang.cindex.CursorKind.CONSTRUCTOR:
+            kind_label = "constructor"
+        elif cursor.kind == clang.cindex.CursorKind.DESTRUCTOR:
+            kind_label = "destructor"
+        elif cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
+            if is_static:
+                kind_label = "static_method"
+            elif access_specifier == "private":
+                kind_label = "private_method"
+            elif access_specifier == "protected":
+                kind_label = "protected_method"
+            else:
+                kind_label = "public_method"
+
+        # Dependencies and complexity (only available for definitions)
         dependencies = []
         complexity = 0
         if cursor.is_definition():
@@ -74,69 +153,61 @@ class CodeAnalyzer:
             "parameters": params,
             "namespace": namespace,
             "class_name": class_name,
+            "is_static": is_static,
+            "access_specifier": access_specifier,
+            "kind": kind_label,
+            "language": language,
             "location": {
                 "file": cursor.location.file.name if cursor.location.file else None,
-                "line": cursor.location.line
+                "line": cursor.location.line,
             },
             "is_definition": cursor.is_definition(),
             "signature": cursor.displayname,
             "dependencies": dependencies,
-            "complexity": complexity
+            "complexity": complexity,
         }
 
     def _extract_calls(self, cursor, dependencies: List[str]):
-        """Recursively finds function calls within a function body."""
+        """Recursively find function calls within a function body."""
         if cursor.kind == clang.cindex.CursorKind.CALL_EXPR:
-            dependencies.append(cursor.spelling)
-        
+            if cursor.spelling:
+                dependencies.append(cursor.spelling)
+
         for child in cursor.get_children():
             self._extract_calls(child, dependencies)
 
     def _calculate_complexity(self, cursor) -> int:
         """
-        Estimates Cyclomatic Complexity by counting branching keywords.
-        Start at 1 for the base path.
+        Estimate Cyclomatic Complexity by counting control-flow branching nodes.
+        Base value is 1. Each IF, FOR, WHILE, CASE, CONDITIONAL_OPERATOR adds 1.
         """
-        complexity = 1
-        return self._recursive_complexity(cursor, complexity)
+        return self._recursive_complexity(cursor, 1)
 
     def _recursive_complexity(self, cursor, count: int) -> int:
-        # Check for branching constructs
         kind = cursor.kind
-        if kind in [
+        if kind in (
             clang.cindex.CursorKind.IF_STMT,
             clang.cindex.CursorKind.FOR_STMT,
             clang.cindex.CursorKind.WHILE_STMT,
+            clang.cindex.CursorKind.DO_STMT,
             clang.cindex.CursorKind.CASE_STMT,
-            clang.cindex.CursorKind.DEFAULT_STMT, # Sometimes conditional? Usually Case handles it.
-            clang.cindex.CursorKind.CONDITIONAL_OPERATOR, # Ternary ? :
-            clang.cindex.CursorKind.BINARY_OPERATOR # AND/OR (Short-circuiting)
-        ]:
-            # For Binary Operator, we only care about && and ||
-            if kind == clang.cindex.CursorKind.BINARY_OPERATOR:
-                # We need to check tokens but that's expensive/hard without tokenizing.
-                # Heuristic: Just assume complex ops might increase paths? 
-                # Actually, standard complexity usually counts predicates + 1.
-                # Let's stick to Control Flow Stmts for now to keep it fast.
-                pass
-            else:
-                count += 1
-        
-        # Specific check for logic ops if easy? 
-        # libclang doesn't give OpCode easily on cursor.
-        
+            clang.cindex.CursorKind.CONDITIONAL_OPERATOR,  # ternary ? :
+        ):
+            count += 1
+
         for child in cursor.get_children():
             count = self._recursive_complexity(child, count)
-        
+
         return count
 
 
 if __name__ == "__main__":
     import json
+
     if len(sys.argv) < 2:
-        print("Usage: python analyzer.py <cpp_file>")
+        print("Usage: python analyzer.py <source_file>")
         sys.exit(1)
-    
+
     analyzer = CodeAnalyzer()
     results = analyzer.analyze_file(sys.argv[1])
     print(json.dumps(results, indent=2))

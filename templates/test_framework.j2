@@ -1,43 +1,100 @@
+// Auto-generated unit test file
+// Source: {{ source_filename }}  |  Language: {{ language }}
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+{% if language == "C" %}
+// C source — include via extern "C" linkage
+extern "C" {
 #include "{{ source_filename }}"
-
-// Mocks
-// {% for mock in mocks %}
+}
+{% else %}
+#include "{{ source_filename }}"
+{% endif %}
+{% if has_class and has_non_static_members %}
+// ─── Mock declarations (if any) ────────────────────────────────────────────
+{% for mock in mocks %}
 // {{ mock }}
-// {% endfor %}
+{% endfor %}
 
-// Test Suite for class {{ class_name }}
+// ═══════════════════════════════════════════════════════════════════════════
+// Test Fixture for {{ class_name }}
+// ═══════════════════════════════════════════════════════════════════════════
 class {{ class_name }}Test : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Setup code
+        // Initialize fixture state before each test
     }
 
     void TearDown() override {
-        // Teardown code
+        // Cleanup after each test
     }
 
-    // Instance of the class being tested
+{% if namespace %}
     {{ namespace }}::{{ class_name }} obj;
+{% else %}
+    {{ class_name }} obj;
+{% endif %}
 };
 
+{% endif %}
 {% for func in functions %}
 {% if not func.is_covered %}
-TEST_F({{ class_name }}Test, {{ func.name }}_Coverage) {
+// ───────────────────────────────────────────────────────────────────────────
+// Function : {{ func.name }}
+// Signature: {{ func.signature }}
+// Kind     : {{ func.kind }}{% if func.is_static %}  [STATIC]{% endif %}
+// Access   : {{ func.access_specifier }}
+// Language : {{ func.language }}
+// ───────────────────────────────────────────────────────────────────────────
+
+{% set kind = func.kind %}
+{% set is_static = func.is_static %}
+{% set access = func.access_specifier %}
+{% set test_macro = "TEST_F" if (has_class and has_non_static_members and not is_static and access != "private") else "TEST" %}
+{% set suite_name = class_name + "Test" if (has_class and has_non_static_members and not is_static and access != "private") else class_name + "_Global" %}
+{% if not has_class %}{% set suite_name = "GlobalFunctions" %}{% endif %}
+
+{% if access == "private" or access == "protected" %}
+// NOTE: `{{ func.name }}` is {{ access }} — test via public API, friend class, or test-only subclass.
+// Uncomment and adapt the test below once you have a testing hook in place.
+/*
+{% endif %}
+{{ test_macro }}({{ suite_name }}, {{ func.name }}_Coverage) {
     {% if func.test_body %}
 {{ func.test_body }}
     {% else %}
     // TODO: Implement test for {{ func.name }}
-    // Signature: {{ func.signature }}
-    
-    // Suggested Strategy:
+    // Signature : {{ func.signature }}
+    {% if is_static %}
+    // STATIC — call as: {{ class_name }}::{{ func.name }}(...)
+    {% endif %}
+
+    // ── General Test Cases ─────────────────────────────────────────────────
     {% for case in func.suggested_test_cases %}
-    // - {{ case }}
+    // CASE: {{ case }}
     {% endfor %}
-    
-    FAIL() << "Test not implemented";
+
+    // ── Boundary Cases ─────────────────────────────────────────────────────
+    {% for case in func.boundary_cases %}
+    // BOUNDARY: {{ case }}
+    {% endfor %}
+
+    // ── Equivalence Partition Cases ────────────────────────────────────────
+    {% for case in func.equivalence_partition_cases %}
+    // EP: {{ case }}
+    {% endfor %}
+
+    // ── MCDC Requirements ──────────────────────────────────────────────────
+    {% for case in func.mcdc_cases %}
+    // MCDC: {{ case }}
+    {% endfor %}
+
+    FAIL() << "Test not implemented for {{ func.name }}";
     {% endif %}
 }
+{% if access == "private" or access == "protected" %}
+*/
+{% endif %}
+
 {% endif %}
 {% endfor %}

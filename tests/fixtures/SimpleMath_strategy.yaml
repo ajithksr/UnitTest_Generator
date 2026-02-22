@@ -3,44 +3,287 @@ functions:
 - name: add
   signature: add(int, int)
   file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
-  line: 6
-  is_covered: true
-  existing_tests:
-  - SimpleMathTest.AddTests
+  line: 9
+  is_covered: false
+  existing_tests: []
   class_name: SimpleMath
   namespace: MathLib
+  language: C++
+  kind: public_method
+  is_static: false
+  access_specifier: public
   suggested_test_cases:
-  - Additional Verification
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  boundary_cases:
+  - 'Boundary [a]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [a]: value = 0 (zero boundary)'
+  - 'Boundary [a]: value = -1 and +1 (near-zero)'
+  - 'Boundary [b]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [b]: value = 0 (zero boundary)'
+  - 'Boundary [b]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [a]: Typical positive value (valid partition)'
+  - 'EP [a]: Typical negative value (if signed, valid partition)'
+  - 'EP [a]: Zero (border between partitions)'
+  - 'EP [a]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [b]: Typical positive value (valid partition)'
+  - 'EP [b]: Typical negative value (if signed, valid partition)'
+  - 'EP [b]: Zero (border between partitions)'
+  - 'EP [b]: Out-of-range / invalid value (invalid partition)'
   mocks_needed: []
   mcdc_cases: []
 - name: subtract
   signature: subtract(int, int)
   file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
-  line: 10
-  is_covered: true
-  existing_tests:
-  - SimpleMathStub.SubtractTest
+  line: 13
+  is_covered: false
+  existing_tests: []
   class_name: SimpleMath
   namespace: MathLib
+  language: C++
+  kind: public_method
+  is_static: false
+  access_specifier: public
   suggested_test_cases:
-  - Additional Verification
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  boundary_cases:
+  - 'Boundary [a]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [a]: value = 0 (zero boundary)'
+  - 'Boundary [a]: value = -1 and +1 (near-zero)'
+  - 'Boundary [b]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [b]: value = 0 (zero boundary)'
+  - 'Boundary [b]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [a]: Typical positive value (valid partition)'
+  - 'EP [a]: Typical negative value (if signed, valid partition)'
+  - 'EP [a]: Zero (border between partitions)'
+  - 'EP [a]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [b]: Typical positive value (valid partition)'
+  - 'EP [b]: Typical negative value (if signed, valid partition)'
+  - 'EP [b]: Zero (border between partitions)'
+  - 'EP [b]: Out-of-range / invalid value (invalid partition)'
   mocks_needed: []
   mcdc_cases: []
 - name: divide
   signature: divide(int, int)
   file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
-  line: 14
+  line: 17
   is_covered: false
   existing_tests: []
   class_name: SimpleMath
   namespace: MathLib
+  language: C++
+  kind: public_method
+  is_static: false
+  access_specifier: public
   suggested_test_cases:
   - Positive Case
   - Negative Case
   - Boundary Case
   - 'Failure Injection: invalid_argument throws/returns error'
   - 'MCDC: Verify 2 logical paths'
+  boundary_cases:
+  - 'Boundary [a]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [a]: value = 0 (zero boundary)'
+  - 'Boundary [a]: value = -1 and +1 (near-zero)'
+  - 'Boundary [b]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [b]: value = 0 (zero boundary)'
+  - 'Boundary [b]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [a]: Typical positive value (valid partition)'
+  - 'EP [a]: Typical negative value (if signed, valid partition)'
+  - 'EP [a]: Zero (border between partitions)'
+  - 'EP [a]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [b]: Typical positive value (valid partition)'
+  - 'EP [b]: Typical negative value (if signed, valid partition)'
+  - 'EP [b]: Zero (border between partitions)'
+  - 'EP [b]: Out-of-range / invalid value (invalid partition)'
   mocks_needed:
   - Mock for invalid_argument
   mcdc_cases:
-  - 'MCDC: Complexity is 2. Need to cover all path combinations.'
+  - 'MCDC: Complexity is 2. Cover all 2 logical path combinations.'
+- name: clamp
+  signature: clamp(int, int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 26
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  language: C++
+  kind: static_method
+  is_static: true
+  access_specifier: public
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - "Static: call directly without class instance \u2014 verify thread-safety if applicable"
+  - 'MCDC: Verify 3 logical paths'
+  boundary_cases:
+  - 'Boundary [value]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [value]: value = 0 (zero boundary)'
+  - 'Boundary [value]: value = -1 and +1 (near-zero)'
+  - 'Boundary [min_val]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [min_val]: value = 0 (zero boundary)'
+  - 'Boundary [min_val]: value = -1 and +1 (near-zero)'
+  - 'Boundary [max_val]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [max_val]: value = 0 (zero boundary)'
+  - 'Boundary [max_val]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [value]: Typical positive value (valid partition)'
+  - 'EP [value]: Typical negative value (if signed, valid partition)'
+  - 'EP [value]: Zero (border between partitions)'
+  - 'EP [value]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [min_val]: Typical positive value (valid partition)'
+  - 'EP [min_val]: Typical negative value (if signed, valid partition)'
+  - 'EP [min_val]: Zero (border between partitions)'
+  - 'EP [min_val]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [max_val]: Typical positive value (valid partition)'
+  - 'EP [max_val]: Typical negative value (if signed, valid partition)'
+  - 'EP [max_val]: Zero (border between partitions)'
+  - 'EP [max_val]: Out-of-range / invalid value (invalid partition)'
+  mocks_needed: []
+  mcdc_cases:
+  - 'MCDC: Complexity is 3. Cover all 3 logical path combinations.'
+- name: isValidDivisor
+  signature: isValidDivisor(int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 32
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  language: C++
+  kind: static_method
+  is_static: true
+  access_specifier: public
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - "Static: call directly without class instance \u2014 verify thread-safety if applicable"
+  boundary_cases:
+  - 'Boundary [divisor]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [divisor]: value = 0 (zero boundary)'
+  - 'Boundary [divisor]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [divisor]: Typical positive value (valid partition)'
+  - 'EP [divisor]: Typical negative value (if signed, valid partition)'
+  - 'EP [divisor]: Zero (border between partitions)'
+  - 'EP [divisor]: Out-of-range / invalid value (invalid partition)'
+  mocks_needed: []
+  mcdc_cases: []
+- name: scaleResult
+  signature: scaleResult(int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 38
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  language: C++
+  kind: protected_method
+  is_static: false
+  access_specifier: protected
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - "Access: protected method \u2014 test via public API, friend class, or expose\
+    \ via test subclass"
+  - 'MCDC: Verify 2 logical paths'
+  boundary_cases:
+  - 'Boundary [value]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [value]: value = 0 (zero boundary)'
+  - 'Boundary [value]: value = -1 and +1 (near-zero)'
+  - 'Boundary [factor]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [factor]: value = 0 (zero boundary)'
+  - 'Boundary [factor]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [value]: Typical positive value (valid partition)'
+  - 'EP [value]: Typical negative value (if signed, valid partition)'
+  - 'EP [value]: Zero (border between partitions)'
+  - 'EP [value]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [factor]: Typical positive value (valid partition)'
+  - 'EP [factor]: Typical negative value (if signed, valid partition)'
+  - 'EP [factor]: Zero (border between partitions)'
+  - 'EP [factor]: Out-of-range / invalid value (invalid partition)'
+  mocks_needed: []
+  mcdc_cases:
+  - 'MCDC: Complexity is 2. Cover all 2 logical path combinations.'
+- name: checkOverflow
+  signature: checkOverflow(int, int)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 45
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  language: C++
+  kind: private_method
+  is_static: false
+  access_specifier: private
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - "Access: private method \u2014 test via public API, friend class, or expose via\
+    \ test subclass"
+  - 'MCDC: Verify 3 logical paths'
+  boundary_cases:
+  - 'Boundary [a]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [a]: value = 0 (zero boundary)'
+  - 'Boundary [a]: value = -1 and +1 (near-zero)'
+  - 'Boundary [b]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [b]: value = 0 (zero boundary)'
+  - 'Boundary [b]: value = -1 and +1 (near-zero)'
+  equivalence_partition_cases:
+  - 'EP [a]: Typical positive value (valid partition)'
+  - 'EP [a]: Typical negative value (if signed, valid partition)'
+  - 'EP [a]: Zero (border between partitions)'
+  - 'EP [a]: Out-of-range / invalid value (invalid partition)'
+  - 'EP [b]: Typical positive value (valid partition)'
+  - 'EP [b]: Typical negative value (if signed, valid partition)'
+  - 'EP [b]: Zero (border between partitions)'
+  - 'EP [b]: Out-of-range / invalid value (invalid partition)'
+  mocks_needed: []
+  mcdc_cases:
+  - 'MCDC: Complexity is 3. Cover all 3 logical path combinations.'
+- name: applySign
+  signature: applySign(int, bool)
+  file: /home/ajith/Documents/git/antigravity/UT_tests/tests/fixtures/SimpleMath.cpp
+  line: 51
+  is_covered: false
+  existing_tests: []
+  class_name: SimpleMath
+  namespace: MathLib
+  language: C++
+  kind: private_method
+  is_static: false
+  access_specifier: private
+  suggested_test_cases:
+  - Positive Case
+  - Negative Case
+  - Boundary Case
+  - "Access: private method \u2014 test via public API, friend class, or expose via\
+    \ test subclass"
+  - 'MCDC: Verify 2 logical paths'
+  boundary_cases:
+  - 'Boundary [magnitude]: INT_MIN / INT_MAX (overflow edge)'
+  - 'Boundary [magnitude]: value = 0 (zero boundary)'
+  - 'Boundary [magnitude]: value = -1 and +1 (near-zero)'
+  - 'Boundary [negative]: true'
+  - 'Boundary [negative]: false'
+  equivalence_partition_cases:
+  - 'EP [magnitude]: Typical positive value (valid partition)'
+  - 'EP [magnitude]: Typical negative value (if signed, valid partition)'
+  - 'EP [magnitude]: Zero (border between partitions)'
+  - 'EP [magnitude]: Out-of-range / invalid value (invalid partition)'
+  mocks_needed: []
+  mcdc_cases:
+  - 'MCDC: Complexity is 2. Cover all 2 logical path combinations.'

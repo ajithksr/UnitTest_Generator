@@ -1,66 +1,86 @@
-# Agentic C++ Unit Tester
+# Agentic C / C++ Unit Tester
 
-This tool analyzes C++ codebases, identifies test coverage gaps, and generates Google Test (gtest) code using an LLM-assisted workflow. It calculates cyclomatic complexity (for MCDC) and identifies external dependencies for mocking.
+An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps, and generates Google Test (gtest/gmock) code with an LLM-assisted workflow. It supports free functions, member methods, static methods, constructors, destructors, and private/protected members — with automatic boundary, equivalence partition, and MCDC test case planning.
+
+---
 
 ## Features
 
-- **AST Analysis**: Parses C++ files using `libclang` to extract functions, classes, and namespaces.
-- **Coverage Mapping**: Compares source functions with existing tests (Regex-based).
-- **MCDC Calculation**: Estimates cyclomatic complexity based on branching logic.
-- **Strategy Generation**: Proposes test cases, including failure injection for dependencies.
-- **Agentic Code Generation**: Uses OpenAI or Gemini to generate actual C++ test bodies based on the strategy.
+- **C and C++ AST Analysis**: Parses `.c`, `.h`, `.cpp`, `.hpp`, `.cxx`, `.hh` files using `libclang`. Detects:
+  - Free functions (C and C++)
+  - Class member methods (public / protected / private)
+  - Static methods and file-static C functions
+  - Constructors and destructors
+- **Boundary & Equivalence Partition Test Planning**: Automatically generates test cases per parameter type:
+  - `int`/`long`/`uint*` → INT_MIN/MAX, 0, ±1
+  - `float`/`double` → numeric_limits, NaN, ±Inf, -0.0
+  - Pointers → nullptr/NULL, dangling pointer note
+  - `char*` / `std::string` → empty, very long, special characters
+  - `bool` → true / false
+- **MCDC Coverage Planning**: Estimates cyclomatic complexity and flags paths that need coverage.
+- **Coverage Mapping**: Compares source functions against existing tests (regex-based) and identifies gaps.
+- **Mock / Failure Injection Strategy**: Lists external dependencies and suggests failure injection scenarios.
+- **Agentic Test Generation**: Uses OpenAI, Gemini, or locally-running Ollama to generate complete test bodies guided by the strategy.
+- **Smart Template Rendering**:
+  - `extern "C" { #include "..." }` automatically emitted for C source files.
+  - `TEST_F(...)` fixture for public member methods; `TEST(...)` for static/free functions.
+  - Private/protected methods wrapped in commented-out stubs with a testing approach note.
+
+---
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.8+
-- `libclang` (Ensure it's installed on your system)
-- C++ Compiler (for verification)
+- `libclang` Python bindings (`pip install libclang`)
+- C++ compiler (for verification): `g++`, `cmake`
 
 ### Setup
 
-1. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-2. Configure environment variables (optional, for LLM support):
-   Create a `.env` file in the root directory:
-   ```env
-   # To use Cloud APIs:
-   LLM_API_KEY=your_api_key_here
+Configure your LLM provider via a `.env` file (copy from `.env.example`):
 
-   # To force a specific provider (e.g., ollama, openai, gemini):
-   LLM_PROVIDER=ollama
-   OLLAMA_MODEL=qwen2.5-coder:7b
-   ```
-   *Note: If no API key is found, the tool will auto-detect if Ollama is running locally and use it.*
+```env
+# Choose one:
+LLM_PROVIDER=ollama          # local Ollama (default / recommended)
+# LLM_API_KEY=sk-...         # OpenAI
+# LLM_API_KEY=AIza...        # Google Gemini
 
-## usage
+OLLAMA_MODEL=qwen2.5-coder:7b
+```
 
-The tool is accessible via the `main.py` CLI.
+> If no API key is provided and Ollama is not running, the tool falls back to a **Mock provider** that generates placeholder stubs.
+
+---
+
+## Usage
 
 ### 1. Analyze a Source File
 
-Analyze a C++ source file to identify functions and coverage gaps. This produces a strategy in both YAML and Markdown formats.
+Accepts both C (`.c`) and C++ (`.cpp`, `.cxx`) files.
 
 ```bash
-python3 main.py analyze <source_file> --test-file <existing_test_file>
+python3 main.py analyze <source_file> [--test-file <existing_test_file>]
 ```
 
-**Example:**
+**Examples:**
 ```bash
+# C source
+python3 main.py analyze tests/fixtures/SimpleCalc.c
+
+# C++ source with existing tests
 python3 main.py analyze tests/fixtures/SimpleMath.cpp --test-file tests/fixtures/SimpleMathTest.cpp
 ```
 
-**Outputs:**
-- `SimpleMath_strategy.yaml`: Structured strategy for the generator.
-- `SimpleMath_strategy.md`: Human-readable report with coverage indicators.
+**Outputs** (written alongside the source file):
+- `<name>_strategy.yaml` — Structured strategy for the generator
+- `<name>_strategy.md` — Human-readable report with coverage, boundary, EP, and MCDC details
 
 ### 2. Generate Test Code
-
-Generate C++ Google Test code from a strategy file.
 
 ```bash
 python3 main.py generate <strategy_file> <output_file>
@@ -71,38 +91,76 @@ python3 main.py generate <strategy_file> <output_file>
 python3 main.py generate tests/fixtures/SimpleMath_strategy.yaml tests/fixtures/SimpleMath_generated.cpp
 ```
 
+---
+
+## Test Strategy Details
+
+Each function's strategy includes:
+
+| Section | Content |
+|---|---|
+| **General Cases** | Positive, Negative, Boundary |
+| **Boundary Cases** | Per-parameter: INT_MIN/MAX, nullptr, empty string, NaN, etc. |
+| **Equivalence Partitions** | Per-parameter: valid partition, invalid partition, zero/border |
+| **MCDC Requirements** | Paths needed based on cyclomatic complexity |
+| **Mocks Needed** | Dependencies flagged for failure injection |
+| **Private/Protected** | Guidance: test via public API, friend class, or test subclass |
+| **Static** | Call directly via `Class::method()`; verify thread safety |
+
+---
+
 ## Project Structure
 
-- `main.py`: CLI entry point.
-- `src/analyzer.py`: AST parsing and complexity analysis.
-- `src/test_parser.py`: Existing test identification logic.
-- `src/strategy.py`: Logic to map functions to tests and propose new cases.
-- `src/generator.py`: Test code scaffolding using Jinja2.
-- `src/llm_client.py`: Interface for OpenAI and Gemini APIs.
-- `templates/`: Jinja2 templates for C++ code generation and CMakeLists.txt.
-- `scripts/`: Helper scripts, including the verification pipeline.
+```
+.
+├── main.py                       # CLI entry point (analyze / generate)
+├── src/
+│   ├── analyzer.py               # libclang AST analysis (C + C++)
+│   ├── strategy.py               # Strategy planner with boundary/EP logic
+│   ├── generator.py              # Jinja2 test code scaffolding
+│   ├── llm_client.py             # OpenAI / Gemini / Ollama / Mock providers
+│   └── test_parser.py            # Regex-based existing test discovery
+├── templates/
+│   ├── test_framework.j2         # C/C++ gtest/gmock test template
+│   └── CMakeLists.txt.j2         # CMake build template
+├── tests/
+│   └── fixtures/
+│       ├── SimpleCalc.c / .h     # C fixture (free functions, pointer, double)
+│       ├── SimpleMath.cpp / .hpp # C++ fixture (public, static, protected, private)
+│       └── SimpleMathTest.cpp    # Existing test reference
+└── scripts/
+    └── verify_pipeline.py        # Interactive CMake build + test + coverage runner
+```
+
+---
 
 ## Verification
 
-You can verify the generated tests using the interactive verification script.
+Verify generated tests via the interactive pipeline script (requires `cmake`, `g++`, `lcov`):
 
-### Prerequisites for Verification
-
-The verification pipeline requires `cmake` and `g++`. If not installed:
 ```bash
-sudo apt update
+# Install build tools if needed
 sudo apt install cmake g++ lcov
-```
 
-### Running the Pipeline
-
-The script will guide you through Generating CMake, Building, Running Tests, and Coverage.
-
-```bash
-python3 scripts/verify_pipeline.py <source_file> <test_file>
+# Run the pipeline
+python3 scripts/verify_pipeline.py <source_file> <generated_test_file>
 ```
 
 **Example:**
 ```bash
-python3 scripts/verify_pipeline.py tests/fixtures/SimpleMath.cpp tests/fixtures/SimpleMath_ollama_generated.cpp
+python3 scripts/verify_pipeline.py tests/fixtures/SimpleMath.cpp tests/fixtures/SimpleMath_generated.cpp
 ```
+
+The script guides you through: CMake generation → Build → Test Run → Coverage Report.
+
+---
+
+## LLM Provider Selection
+
+| Priority | Provider | Trigger |
+|---|---|---|
+| 1 | Ollama | `LLM_PROVIDER=ollama` in `.env` |
+| 2 | Gemini | `LLM_API_KEY` starts with `AIza` |
+| 3 | OpenAI | `LLM_API_KEY` starts with `sk-` |
+| 4 | Auto Ollama | Ollama detected running at `localhost:11434` |
+| 5 | Mock | Fallback — generates placeholder stubs |
