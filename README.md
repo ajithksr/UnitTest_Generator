@@ -11,6 +11,9 @@ An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps
   - Class member methods (public / protected / private)
   - Static methods and file-static C functions
   - Constructors and destructors
+- **Optimized Test Strategy**: Uses an LLM as a "Test Architect" to identify a **minimal but robust** set of logic-aware scenarios, avoiding brute-force permutations while ensuring critical paths and boundaries are covered.
+- **Legacy C & Static Function Support**: Automatically detects static functions. For legacy C, it supports testing file-static functions by optionally including the source file directly in the test suite.
+- **Recursive Directory Scanning**: Batch process entire codebases with a single command to generate strategies for all source files.
 - **Boundary & Equivalence Partition Test Planning**: Automatically generates test cases per parameter type:
   - `int`/`long`/`uint*` → INT_MIN/MAX, 0, ±1
   - `float`/`double` → numeric_limits, NaN, ±Inf, -0.0
@@ -23,6 +26,7 @@ An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps
 - **Agentic Test Generation**: Uses OpenAI, Gemini, or locally-running Ollama to generate complete test bodies guided by the strategy.
 - **Smart Template Rendering**:
   - `extern "C" { #include "..." }` automatically emitted for C source files.
+  - `#include "source.c"` automatically emitted when testing static C functions.
   - `TEST_F(...)` fixture for public member methods; `TEST(...)` for static/free functions.
   - Private/protected methods wrapped in commented-out stubs with a testing approach note.
 
@@ -76,11 +80,15 @@ python3 main.py analyze tests/fixtures/SimpleCalc.c
 python3 main.py analyze tests/fixtures/SimpleMath.cpp --test-file tests/fixtures/SimpleMathTest.cpp
 ```
 
-**Outputs** (written alongside the source file):
-- `<name>_strategy.yaml` — Structured strategy for the generator
-- `<name>_strategy.md` — Human-readable report with coverage, boundary, EP, and MCDC details
+### 2. Batch Scan a Directory
 
-### 2. Generate Test Code
+Recursively scan a directory for all C/C++ files and generate strategies.
+
+```bash
+python3 main.py scan <directory> [--output-dir strategies]
+```
+
+### 3. Generate Test Code
 
 ```bash
 python3 main.py generate <strategy_file> <output_file>
@@ -99,13 +107,13 @@ Each function's strategy includes:
 
 | Section | Content |
 |---|---|
-| **General Cases** | Positive, Negative, Boundary |
+| **Unified Scenarios** | Logic-aware, optimized test cases identified by LLM |
 | **Boundary Cases** | Per-parameter: INT_MIN/MAX, nullptr, empty string, NaN, etc. |
 | **Equivalence Partitions** | Per-parameter: valid partition, invalid partition, zero/border |
 | **MCDC Requirements** | Paths needed based on cyclomatic complexity |
 | **Mocks Needed** | Dependencies flagged for failure injection |
 | **Private/Protected** | Guidance: test via public API, friend class, or test subclass |
-| **Static** | Call directly via `Class::method()`; verify thread safety |
+| **Static / Legacy C** | Automatic source inclusion for testing file-static functions |
 
 ---
 
@@ -113,7 +121,7 @@ Each function's strategy includes:
 
 ```
 .
-├── main.py                       # CLI entry point (analyze / generate)
+├── main.py                       # CLI entry point (analyze / scan / generate)
 ├── src/
 │   ├── analyzer.py               # libclang AST analysis (C + C++)
 │   ├── strategy.py               # Strategy planner with boundary/EP logic
@@ -145,13 +153,6 @@ sudo apt install cmake g++ lcov
 # Run the pipeline
 python3 scripts/verify_pipeline.py <source_file> <generated_test_file>
 ```
-
-**Example:**
-```bash
-python3 scripts/verify_pipeline.py tests/fixtures/SimpleMath.cpp tests/fixtures/SimpleMath_generated.cpp
-```
-
-The script guides you through: CMake generation → Build → Test Run → Coverage Report.
 
 ---
 

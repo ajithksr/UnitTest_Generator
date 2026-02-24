@@ -47,6 +47,7 @@ class TestGenerator:
         mocks = set()
         has_non_static_members = False
 
+        has_static_functions = False
         for func in functions:
             if func.get("class_name") and not target_class:
                 target_class = func["class_name"]
@@ -56,6 +57,9 @@ class TestGenerator:
             kind = func.get("kind", "free_function")
             if kind in ("public_method", "protected_method", "private_method"):
                 has_non_static_members = True
+            
+            if func.get("is_static"):
+                has_static_functions = True
 
             for mock in func.get("mocks_needed", []):
                 if mock and "Mock for " in mock and len(mock) > 9:
@@ -83,11 +87,13 @@ class TestGenerator:
 
         context = {
             "source_filename": header_filename,
+            "source_filename_original": source_filename,
             "language": language,
             "class_name": target_class or "UnknownClass",
             "namespace": target_namespace or "",
             "has_class": target_class is not None,
             "has_non_static_members": has_non_static_members,
+            "has_static_functions": has_static_functions,
             "functions": functions,
             "mocks": list(mocks),
         }

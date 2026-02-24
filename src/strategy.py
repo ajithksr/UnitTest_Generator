@@ -111,9 +111,8 @@ class FunctionStrategy:
     kind: str = "free_function"          # constructor / destructor / static_method / private_method / …
     is_static: bool = False
     access_specifier: str = "none"       # public / private / protected / none
-    suggested_test_cases: List[str] = field(default_factory=list)
-    boundary_cases: List[str] = field(default_factory=list)
-    equivalence_partition_cases: List[str] = field(default_factory=list)
+    suggested_test_cases: List[str] = field(default_factory=list)  # This will hold the UNIFIED scenarios
+    technical_baseline: Dict[str, List[str]] = field(default_factory=dict)  # Hidden baseline for reference
     mocks_needed: List[str] = field(default_factory=list)
     mcdc_cases: List[str] = field(default_factory=list)
 
@@ -136,6 +135,7 @@ class StrategyGenerator:
         self,
         file_functions: List[Dict[str, Any]],
         existing_tests: List[Dict[str, Any]],
+        llm_client: Optional[Any] = None,
     ) -> FileStrategy:
         """
         Compares analyzed functions with existing tests and generates a rich strategy,
@@ -177,50 +177,58 @@ class StrategyGenerator:
             is_covered = len(matched_tests) > 0
 
             # ------------------------------------------------------------------
-            # Boundary & Equivalence Partition cases
+            # Technical Requirements Baseline (Internal Context)
             # ------------------------------------------------------------------
             boundary_cases, ep_cases = _generate_boundary_ep_cases(parameters)
-
-            # ------------------------------------------------------------------
-            # Basic suggested cases
-            # ------------------------------------------------------------------
-            suggested_cases = list(func.get("suggested_test_cases") or [])
-            if not suggested_cases:
-                base = ["Positive Case", "Negative Case", "Boundary Case"]
-                suggested_cases = base if not is_covered else ["Additional Verification"]
-
-            # Private / protected: note testing strategy
-            if access_specifier in ("private", "protected"):
-                suggested_cases.append(
-                    f"Access: {access_specifier} method — test via public API, "
-                    f"friend class, or expose via test subclass"
-                )
-
-            # Static functions
-            if is_static:
-                suggested_cases.append(
-                    "Static: call directly without class instance — verify thread-safety if applicable"
-                )
-
-            # ------------------------------------------------------------------
-            # Mock / failure injection from dependencies
-            # ------------------------------------------------------------------
+            
             mocks = []
             for dep in func.get("dependencies", []):
                 if dep:
                     mocks.append(f"Mock for {dep}")
-                    suggested_cases.append(f"Failure Injection: {dep} throws/returns error")
 
-            # ------------------------------------------------------------------
-            # MCDC analysis
-            # ------------------------------------------------------------------
             complexity = func.get("complexity", 1)
             mcdc_cases = []
             if complexity > 1:
                 mcdc_cases.append(
-                    f"MCDC: Complexity is {complexity}. Cover all {complexity} logical path combinations."
+                    f"MCDC: Complexity is {complexity}. Ensure all {complexity} logical decision branches are covered."
                 )
-                suggested_cases.append(f"MCDC: Verify {complexity} logical paths")
+
+            technical_context = {
+                "boundary_cases": boundary_cases,
+                "equivalence_partition_cases": ep_cases,
+                "mocks_needed": mocks,
+                "mcdc_cases": mcdc_cases
+            }
+
+            # ------------------------------------------------------------------
+            # UNIFIED LLM Logic-Aware Test Strategy
+            # ------------------------------------------------------------------
+            suggested_cases = []
+            body_code = func.get("body_code")
+            if llm_client and body_code:
+                print(f"[INFO] Identifying unified master strategy for {func_name} using LLM...")
+                llm_cases = llm_client.identify_test_strategy(
+                    func["signature"], body_code, language, technical_context
+                )
+                if llm_cases:
+                    suggested_cases.extend(llm_cases)
+            
+            # Default fallback if LLM failed
+            if not suggested_cases:
+                if not is_covered:
+                    suggested_cases.extend(boundary_cases)
+                    suggested_cases.extend(ep_cases)
+                    suggested_cases.extend(mcdc_cases)
+                    if not suggested_cases:
+                        suggested_cases = ["Positive Case", "Negative Case"]
+                else:
+                    suggested_cases = ["Additional Verification"]
+
+            # Special case notes (Access specifiers, static)
+            if access_specifier in ("private", "protected"):
+                suggested_cases.append(f"NOTE: Test via public API or test subclass (Access: {access_specifier})")
+            if is_static:
+                suggested_cases.append("NOTE: Call directly via class scope (Static method)")
 
             f_strat = FunctionStrategy(
                 name=func_name,
@@ -237,8 +245,7 @@ class StrategyGenerator:
                 existing_tests=matched_tests,
                 mocks_needed=mocks,
                 suggested_test_cases=suggested_cases,
-                boundary_cases=boundary_cases,
-                equivalence_partition_cases=ep_cases,
+                technical_baseline=technical_context,
                 mcdc_cases=mcdc_cases,
             )
             strategy.functions.append(f_strat)
@@ -297,18 +304,8 @@ class StrategyGenerator:
                     lines.append(f"  - {test}")
 
             if func.suggested_test_cases:
-                lines.append("- **Suggested Test Cases:**")
+                lines.append("- **Unified Test Scenarios:**")
                 for case in func.suggested_test_cases:
-                    lines.append(f"  - {case}")
-
-            if func.boundary_cases:
-                lines.append("- **Boundary Cases:**")
-                for case in func.boundary_cases:
-                    lines.append(f"  - {case}")
-
-            if func.equivalence_partition_cases:
-                lines.append("- **Equivalence Partition Cases:**")
-                for case in func.equivalence_partition_cases:
                     lines.append(f"  - {case}")
 
             if func.mocks_needed:

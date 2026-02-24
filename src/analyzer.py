@@ -140,12 +140,14 @@ class CodeAnalyzer:
             else:
                 kind_label = "public_method"
 
-        # Dependencies and complexity (only available for definitions)
+        # Dependencies, complexity, and body extraction (only available for definitions)
         dependencies = []
         complexity = 0
+        body_code = None
         if cursor.is_definition():
             self._extract_calls(cursor, dependencies)
             complexity = self._calculate_complexity(cursor)
+            body_code = self._extract_source_code(cursor)
 
         return {
             "name": cursor.spelling,
@@ -163,9 +165,31 @@ class CodeAnalyzer:
             },
             "is_definition": cursor.is_definition(),
             "signature": cursor.displayname,
+            "body_code": body_code,
             "dependencies": dependencies,
             "complexity": complexity,
         }
+
+    def _extract_source_code(self, cursor) -> Optional[str]:
+        """Reads the source code for the given cursor definition."""
+        if not cursor.location.file or not cursor.extent:
+            return None
+        
+        try:
+            with open(cursor.location.file.name, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                # clang lines and columns are 1-indexed
+                start_line = cursor.extent.start.line - 1
+                end_line = cursor.extent.end.line
+                
+                # Extract the range of lines
+                body_lines = lines[start_line:end_line]
+                
+                # Optional: trim if needed, but usually we want the whole block including { }
+                return "".join(body_lines)
+        except Exception as e:
+            print(f"[WARN] Failed to extract source for {cursor.displayname}: {e}", file=sys.stderr)
+            return None
 
     def _extract_calls(self, cursor, dependencies: List[str]):
         """Recursively find function calls within a function body."""

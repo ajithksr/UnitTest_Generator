@@ -5,6 +5,7 @@ from src.analyzer import CodeAnalyzer
 from src.test_parser import TestAnalyzer
 from src.strategy import StrategyGenerator
 from src.generator import TestGenerator
+from src.llm_client import LLMClient
 from rich.console import Console
 from rich.table import Table
 
@@ -38,8 +39,9 @@ def analyze(source_file: str, test_file: str = None):
         console.print("[yellow]No test file provided or found. Assuming 0 coverage.[/yellow]")
 
     # 3. Generate Strategy
+    llm_client = LLMClient()
     generator = StrategyGenerator()
-    strategy = generator.generate_strategy(source_funcs, existing_tests)
+    strategy = generator.generate_strategy(source_funcs, existing_tests, llm_client=llm_client)
     
     # 4. Save Artifacts
     output_base = os.path.splitext(source_file)[0]
@@ -64,6 +66,62 @@ def analyze(source_file: str, test_file: str = None):
         table.add_row(func.name, status, tests)
         
     console.print(table)
+
+@app.command()
+def scan(directory: str, output_dir: str = "strategies"):
+    """
+    Recursively scans a directory for C/C++ files and generates test strategies for all.
+    """
+    if not os.path.isdir(directory):
+        console.print(f"[bold red]Error:[/bold red] Not a directory: {directory}")
+        raise typer.Exit(code=1)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    console.print(f"[bold green]Scanning Directory:[/bold green] {directory}")
+    
+    extensions = {".c", ".cpp", ".cxx", ".cc", ".h", ".hpp", ".hxx", ".hh"}
+    files_to_process = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if os.path.splitext(file)[1].lower() in extensions:
+                files_to_process.append(os.path.join(root, file))
+
+    if not files_to_process:
+        console.print("[yellow]No C/C++ files found.[/yellow]")
+        return
+
+    console.print(f"Found {len(files_to_process)} files.")
+
+    analyzer = CodeAnalyzer()
+    llm_client = LLMClient()
+    strategy_gen = StrategyGenerator()
+
+    for file_path in files_to_process:
+        console.print(f"\n[bold green]Processing:[/bold green] {file_path}")
+        try:
+            source_funcs = analyzer.analyze_file(file_path)
+            if not source_funcs:
+                console.print(f"[yellow]No functions found in {file_path}. Skipping.[/yellow]")
+                continue
+
+            # For batch scan, we don't look for specific test files yet unless they follow a pattern
+            # Future: pattern match file.cpp -> file_test.cpp
+            strategy = strategy_gen.generate_strategy(source_funcs, [], llm_client=llm_client)
+            
+            rel_path = os.path.relpath(file_path, directory)
+            output_base = os.path.join(output_dir, rel_path.replace(os.sep, "_"))
+            
+            yaml_path = f"{output_base}_strategy.yaml"
+            strategy_gen.save_yaml(strategy, yaml_path)
+            
+            md_path = f"{output_base}_strategy.md"
+            strategy_gen.save_markdown(strategy, md_path)
+            
+            console.print(f"Strategy saved to {output_dir}")
+        except Exception as e:
+            console.print(f"[bold red]Error processing {file_path}:[/bold red] {e}")
 
 @app.command()
 def generate(strategy_file: str, output_file: str):

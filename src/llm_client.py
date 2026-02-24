@@ -180,6 +180,95 @@ class LLMClient:
             print(f"[ERROR] LLM Generation failed: {e}")
             return f"// Error: {e}"
 
+    def identify_test_strategy(self, signature: str, body_code: str, language: str, technical_context: dict) -> List[str]:
+        """
+        Asks the LLM to analyze code logic and unify it with technical requirements 
+        (boundaries, EP, mocks, etc.) into a single master test strategy.
+        """
+        boundary_txt = "\n".join([f"- {c}" for c in technical_context.get("boundary_cases", [])])
+        ep_txt = "\n".join([f"- {c}" for c in technical_context.get("equivalence_partition_cases", [])])
+        mocks_txt = "\n".join([f"- {c}" for c in technical_context.get("mocks_needed", [])])
+        mcdc_txt = "\n".join([f"- {c}" for c in technical_context.get("mcdc_cases", [])])
+
+        prompt = f"""
+You are an expert Test Architect. Analyze the following {language} function and produce a UNIFIED, OPTIMIZED set of high-quality test scenarios.
+
+### Function details:
+Signature: `{signature}`
+Implementation:
+```
+{body_code}
+```
+
+### Technical Requirements to Integrate:
+These are the technical baseline requirements (Boundary values, Equivalence Partitions, and Mocks) you MUST consider and integrate into your logic analysis:
+
+**Boundary Conditions:**
+{boundary_txt or "None identified"}
+
+**Equivalence Partitions:**
+{ep_txt or "None identified"}
+
+**External Dependencies / Mocks:**
+{mocks_txt or "None identified"}
+
+**Logical Paths (MCDC):**
+{mcdc_txt or "None identified"}
+
+### Objective:
+Identify a **minimal but robust** set of test scenarios. Do NOT brute-force every possible permutation. Instead, focus on:
+1. **Critical Logic Paths:** Covered by the implementation logic.
+2. **Risk-Based Scenarios:** Where the code is most likely to fail (e.g., edge cases identified in boundaries).
+3. **Internal Logic Flow:** Map the technical boundaries to specific behavioral expectations (e.g., "Verify add(0, 0) returns 0" instead of just "Boundary: zero").
+
+Ensure ALL identified boundary values and partitions are addressed, but consolidate them where it makes sense (e.g., one scenario can cover multiple boundaries if logical).
+
+Format: Output ONLY a JSON list of strings.
+Example: ["Check result when value is exactly 0", "Verify error when buffer is full", "Mock database failure during record insertion"]
+"""
+        try:
+            response = self.provider.generate_code(prompt)
+            # Try to parse as JSON list
+            import json
+            import re
+            
+            resp_text = response.strip()
+            
+            # 1. Try to find a JSON list anywhere in the response
+            json_match = re.search(r'\[\s*".*"\s*\]', resp_text, re.DOTALL)
+            if json_match:
+                try:
+                    cases = json.loads(json_match.group(0))
+                    if isinstance(cases, list):
+                        return [str(c) for c in cases]
+                except:
+                    pass
+            
+            # 2. Try to find a JSON block via markdown tags
+            if "```json" in resp_text:
+                json_block = resp_text.split("```json")[1].split("```")[0].strip()
+                try:
+                    cases = json.loads(json_block)
+                    if isinstance(cases, list):
+                        return [str(c) for c in cases]
+                except:
+                    pass
+
+            # 3. Fallback: Parse bullet points
+            bullet_matches = re.findall(r'(?:^|\n)(?:[-*]|\d+\.)\s*(.+)', resp_text)
+            if bullet_matches:
+                return [m.strip() for m in bullet_matches]
+            
+            # 4. Final fallback: If response is short enough and has multiple lines, treat each line as a case
+            lines = [l.strip() for l in resp_text.split('\n') if l.strip() and not l.startswith('```')]
+            if 0 < len(lines) < 10:
+                return lines
+
+            return ["Deep Logic Analysis (LLM response format not recognized)"]
+        except Exception as e:
+            print(f"[ERROR] Logic strategy identification failed for {signature}: {e}")
+            return [f"Error identifying strategy: {e}"]
+
     def _construct_prompt(self, signature: str, strategy: dict) -> str:
         language = strategy.get("language", "C++")
         kind = strategy.get("kind", "free_function")
@@ -191,12 +280,13 @@ class LLMClient:
         cases_txt = "\n".join(
             [f"- {c}" for c in strategy.get("suggested_test_cases", [])]
         )
-        boundary_txt = "\n".join(
-            [f"- {c}" for c in strategy.get("boundary_cases", [])]
-        )
-        ep_txt = "\n".join(
-            [f"- {c}" for c in strategy.get("equivalence_partition_cases", [])]
-        )
+        
+        # Optional baseline context if still provided
+        boundary_txt = "\n".join([f"- {c}" for c in strategy.get("boundary_cases", [])])
+        ep_txt = "\n".join([f"- {c}" for c in strategy.get("equivalence_partition_cases", [])])
+        baseline_info = ""
+        if boundary_txt or ep_txt:
+            baseline_info = f"\nTechnical baseline for reference:\n{boundary_txt}\n{ep_txt}\n"
 
         # Calling convention hints
         fixture_context = ""
@@ -224,20 +314,14 @@ Generate the body of a {language} Google Test (gtest) for the following function
 Function Kind: {kind}
 Language: {language}
 
-## General Test Cases
+## Test Scenarios to Implement (MASTER LIST)
 {cases_txt}
-
-## Boundary Cases (MUST cover)
-{boundary_txt}
-
-## Equivalence Partition Cases (MUST cover)
-{ep_txt}
-
+{baseline_info}
 ## Mocks Needed
 {strategy.get('mocks_needed', [])}
 
 {fixture_context}
 
 Output ONLY the C++ code inside the TEST body (do not output the TEST macro itself or #includes).
-For each boundary and equivalence partition case above, write at least one EXPECT_* assertion.
+Ensure all scenarios listed above are covered by appropriate EXPECT_* or ASSERT_* assertions.
 """

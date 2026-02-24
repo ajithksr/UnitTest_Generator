@@ -24,26 +24,12 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-- **Boundary Cases:**
-  - Boundary [a]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [a]: value = 0 (zero boundary)
-  - Boundary [a]: value = -1 and +1 (near-zero)
-  - Boundary [b]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [b]: value = 0 (zero boundary)
-  - Boundary [b]: value = -1 and +1 (near-zero)
-- **Equivalence Partition Cases:**
-  - EP [a]: Typical positive value (valid partition)
-  - EP [a]: Typical negative value (if signed, valid partition)
-  - EP [a]: Zero (border between partitions)
-  - EP [a]: Out-of-range / invalid value (invalid partition)
-  - EP [b]: Typical positive value (valid partition)
-  - EP [b]: Typical negative value (if signed, valid partition)
-  - EP [b]: Zero (border between partitions)
-  - EP [b]: Out-of-range / invalid value (invalid partition)
+- **Unified Test Scenarios:**
+  - Test calc_add with typical positive values
+  - Test calc_add with typical negative values
+  - Test calc_add with zero as a parameter
+  - Test calc_add with INT_MIN and INT_MAX as parameters (boundary cases)
+  - Test calc_add with near-zero values (-1 and +1)
 
 ### `calc_subtract`
 - **Signature:** `calc_subtract(int, int)`
@@ -54,26 +40,12 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-- **Boundary Cases:**
-  - Boundary [a]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [a]: value = 0 (zero boundary)
-  - Boundary [a]: value = -1 and +1 (near-zero)
-  - Boundary [b]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [b]: value = 0 (zero boundary)
-  - Boundary [b]: value = -1 and +1 (near-zero)
-- **Equivalence Partition Cases:**
-  - EP [a]: Typical positive value (valid partition)
-  - EP [a]: Typical negative value (if signed, valid partition)
-  - EP [a]: Zero (border between partitions)
-  - EP [a]: Out-of-range / invalid value (invalid partition)
-  - EP [b]: Typical positive value (valid partition)
-  - EP [b]: Typical negative value (if signed, valid partition)
-  - EP [b]: Zero (border between partitions)
-  - EP [b]: Out-of-range / invalid value (invalid partition)
+- **Unified Test Scenarios:**
+  - Test calc_subtract with INT_MIN and INT_MAX
+  - Test calc_subtract with zero values (a=0, b=0)
+  - Test calc_subtract with near-zero values (a=-1, b=1)
+  - Test calc_subtract with typical positive values
+  - Test calc_subtract with typical negative values
 
 ### `calc_multiply`
 - **Signature:** `calc_multiply(int, int)`
@@ -84,26 +56,15 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-- **Boundary Cases:**
-  - Boundary [a]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [a]: value = 0 (zero boundary)
-  - Boundary [a]: value = -1 and +1 (near-zero)
-  - Boundary [b]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [b]: value = 0 (zero boundary)
-  - Boundary [b]: value = -1 and +1 (near-zero)
-- **Equivalence Partition Cases:**
-  - EP [a]: Typical positive value (valid partition)
-  - EP [a]: Typical negative value (if signed, valid partition)
-  - EP [a]: Zero (border between partitions)
-  - EP [a]: Out-of-range / invalid value (invalid partition)
-  - EP [b]: Typical positive value (valid partition)
-  - EP [b]: Typical negative value (if signed, valid partition)
-  - EP [b]: Zero (border between partitions)
-  - EP [b]: Out-of-range / invalid value (invalid partition)
+- **Unified Test Scenarios:**
+  - Test calc_multiply with INT_MIN as first argument
+  - Test calc_multiply with INT_MAX as first argument
+  - Test calc_multiply with INT_MIN as second argument
+  - Test calc_multiply with INT_MAX as second argument
+  - Test calc_multiply with 0 as both arguments
+  - Test calc_multiply with -1 and +1 as both arguments
+  - Test calc_multiply with typical positive value (e.g., 100)
+  - Test calc_multiply with typical negative value (e.g., -100)
 
 ### `calc_divide`
 - **Signature:** `calc_divide(double, double)`
@@ -114,32 +75,18 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-  - Failure Injection: __errno_location throws/returns error
-  - MCDC: Verify 2 logical paths
-- **Boundary Cases:**
-  - Boundary [a]: std::numeric_limits<double>::max()
-  - Boundary [a]: std::numeric_limits<double>::min() (smallest positive)
-  - Boundary [a]: 0.0 and -0.0
-  - Boundary [a]: NaN, +Inf, -Inf
-  - Boundary [b]: std::numeric_limits<double>::max()
-  - Boundary [b]: std::numeric_limits<double>::min() (smallest positive)
-  - Boundary [b]: 0.0 and -0.0
-  - Boundary [b]: NaN, +Inf, -Inf
-- **Equivalence Partition Cases:**
-  - EP [a]: Typical positive real (valid partition)
-  - EP [a]: Typical negative real (valid partition if signed)
-  - EP [a]: Very small denormalized value
-  - EP [b]: Typical positive real (valid partition)
-  - EP [b]: Typical negative real (valid partition if signed)
-  - EP [b]: Very small denormalized value
+- **Unified Test Scenarios:**
+  - Test division by zero
+  - Test division with very small positive and negative numbers
+  - Test division with NaN, +Inf, -Inf values
+  - Test division with max and min double values
+  - Test division with typical positive real numbers
+  - Test division with typical negative real numbers
+  - Test division with very small denormalized values
 - **Mocks Needed:**
   - Mock for __errno_location
 - **MCDC Requirements:**
-  - MCDC: Complexity is 2. Cover all 2 logical path combinations.
+  - MCDC: Complexity is 2. Ensure all 2 logical decision branches are covered.
 
 ### `calc_clamp`
 - **Signature:** `calc_clamp(int, int, int)`
@@ -150,36 +97,10 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-  - MCDC: Verify 3 logical paths
-- **Boundary Cases:**
-  - Boundary [value]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [value]: value = 0 (zero boundary)
-  - Boundary [value]: value = -1 and +1 (near-zero)
-  - Boundary [min_val]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [min_val]: value = 0 (zero boundary)
-  - Boundary [min_val]: value = -1 and +1 (near-zero)
-  - Boundary [max_val]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [max_val]: value = 0 (zero boundary)
-  - Boundary [max_val]: value = -1 and +1 (near-zero)
-- **Equivalence Partition Cases:**
-  - EP [value]: Typical positive value (valid partition)
-  - EP [value]: Typical negative value (if signed, valid partition)
-  - EP [value]: Zero (border between partitions)
-  - EP [value]: Out-of-range / invalid value (invalid partition)
-  - EP [min_val]: Typical positive value (valid partition)
-  - EP [min_val]: Typical negative value (if signed, valid partition)
-  - EP [min_val]: Zero (border between partitions)
-  - EP [min_val]: Out-of-range / invalid value (invalid partition)
-  - EP [max_val]: Typical positive value (valid partition)
-  - EP [max_val]: Typical negative value (if signed, valid partition)
-  - EP [max_val]: Zero (border between partitions)
-  - EP [max_val]: Out-of-range / invalid value (invalid partition)
+- **Unified Test Scenarios:**
+  - // Error: Ollama connection failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=120)
 - **MCDC Requirements:**
-  - MCDC: Complexity is 3. Cover all 3 logical path combinations.
+  - MCDC: Complexity is 3. Ensure all 3 logical decision branches are covered.
 
 ### `calc_strnlen`
 - **Signature:** `calc_strnlen(const char *, int)`
@@ -190,26 +111,7 @@
 - **Class:** `None`
 - **Static:** `False`
 - **Access:** `none`
-- **Suggested Test Cases:**
-  - Positive Case
-  - Negative Case
-  - Boundary Case
-  - MCDC: Verify 4 logical paths
-- **Boundary Cases:**
-  - Boundary [str]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [str]: value = 0 (zero boundary)
-  - Boundary [str]: value = -1 and +1 (near-zero)
-  - Boundary [max_len]: INT_MIN / INT_MAX (overflow edge)
-  - Boundary [max_len]: value = 0 (zero boundary)
-  - Boundary [max_len]: value = -1 and +1 (near-zero)
-- **Equivalence Partition Cases:**
-  - EP [str]: Typical positive value (valid partition)
-  - EP [str]: Typical negative value (if signed, valid partition)
-  - EP [str]: Zero (border between partitions)
-  - EP [str]: Out-of-range / invalid value (invalid partition)
-  - EP [max_len]: Typical positive value (valid partition)
-  - EP [max_len]: Typical negative value (if signed, valid partition)
-  - EP [max_len]: Zero (border between partitions)
-  - EP [max_len]: Out-of-range / invalid value (invalid partition)
+- **Unified Test Scenarios:**
+  - // Error: Ollama connection failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=120)
 - **MCDC Requirements:**
-  - MCDC: Complexity is 4. Cover all 4 logical path combinations.
+  - MCDC: Complexity is 4. Ensure all 4 logical decision branches are covered.

@@ -5,10 +5,20 @@
 {% if language == "C" %}
 // C source — include via extern "C" linkage
 extern "C" {
-#include "{{ source_filename }}"
-}
+{% if has_static_functions %}
+// Including .c file to access static functions for testing
+#include "{{ source_filename_original }}"
 {% else %}
 #include "{{ source_filename }}"
+{% endif %}
+}
+{% else %}
+{% if has_static_functions and not has_class %}
+// C++ with free static functions — including source to access them
+#include "{{ source_filename_original }}"
+{% else %}
+#include "{{ source_filename }}"
+{% endif %}
 {% endif %}
 {% if has_class and has_non_static_members %}
 // ─── Mock declarations (if any) ────────────────────────────────────────────
