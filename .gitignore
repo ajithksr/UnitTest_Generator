@@ -14,6 +14,10 @@ CMakeLists.txt
 *-strategy.md
 *_generated.cpp
 
+# Outputs
+GeneratedUT/
+TestStrategy/
+
 # IDEs
 .vscode/
 .idea/

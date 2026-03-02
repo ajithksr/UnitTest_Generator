@@ -12,12 +12,25 @@ _ACCESS_MAP = {
     clang.cindex.AccessSpecifier.INVALID: "none",
 }
 
-# Cursor kinds we want to capture: free functions, member methods, constructors, destructors
+# Cursor kinds we want to capture
 _FUNCTION_KINDS = {
     clang.cindex.CursorKind.FUNCTION_DECL,
     clang.cindex.CursorKind.CXX_METHOD,
     clang.cindex.CursorKind.CONSTRUCTOR,
     clang.cindex.CursorKind.DESTRUCTOR,
+}
+
+_TYPE_KINDS = {
+    clang.cindex.CursorKind.ENUM_DECL,
+    clang.cindex.CursorKind.STRUCT_DECL,
+    clang.cindex.CursorKind.CLASS_DECL,
+    clang.cindex.CursorKind.UNION_DECL,
+    clang.cindex.CursorKind.TYPEDEF_DECL,
+    clang.cindex.CursorKind.TYPE_ALIAS_DECL,
+}
+
+_MACRO_KINDS = {
+    clang.cindex.CursorKind.MACRO_DEFINITION,
 }
 
 # C-compatible file extensions
@@ -37,10 +50,16 @@ def _detect_language(file_path: str) -> str:
 def _parse_args_for_file(file_path: str) -> List[str]:
     """Return appropriate clang parse flags for the given source file."""
     lang = _detect_language(file_path)
+    args = []
     if lang == "C":
-        return ["-x", "c", "-std=c11"]
+        args = ["-x", "c", "-std=c11"]
     else:
-        return ["-x", "c++", "-std=c++14"]
+        args = ["-x", "c++", "-std=c++14"]
+    
+    # Enable macro expansion if possible
+    args.append("-Xclang")
+    args.append("-detailed-preprocessing-record")
+    return args
 
 
 class CodeAnalyzer:
@@ -64,31 +83,118 @@ class CodeAnalyzer:
                     print(f"[WARN] Clang: {diag.spelling} at {diag.location}", file=sys.stderr)
 
         functions = []
-        self._traverse(tu.cursor, functions, abs_file_path, language=language)
-        return functions
+        types = []
+        macros = []
+        
+        # Traverse the whole TU to get everything (including includes)
+        self._traverse(tu.cursor, functions, types, macros, abs_file_path, language=language)
+        
+        return {
+            "functions": functions,
+            "types": types,
+            "macros": macros,
+            "file": abs_file_path,
+            "language": language
+        }
 
     def _traverse(
         self,
         cursor,
         functions: List[Dict[str, Any]],
+        types: List[Dict[str, Any]],
+        macros: List[Dict[str, Any]],
         target_file: str,
         namespace: str = "",
         language: str = "C++",
     ):
-        """Recursively traverse the AST and collect function/method info."""
+        """Recursively traverse the AST and collect function/method/type/macro info."""
         current_namespace = namespace
         if cursor.kind == clang.cindex.CursorKind.NAMESPACE:
             current_namespace = (
                 f"{namespace}::{cursor.displayname}" if namespace else cursor.displayname
             )
 
-        if cursor.kind in _FUNCTION_KINDS:
-            if cursor.location.file and os.path.abspath(cursor.location.file.name) == target_file:
-                func_info = self._extract_function_info(cursor, current_namespace, language)
-                functions.append(func_info)
+        # Check if cursor is in the target file OR in an included file
+        # We might want to filter out system headers but keep local ones
+        is_in_target = False
+        if cursor.location.file:
+            cursor_file = os.path.abspath(cursor.location.file.name)
+            if cursor_file == target_file:
+                is_in_target = True
+            # For now, let's capture everything defined in the same directory as hints
+            elif os.path.dirname(cursor_file) == os.path.dirname(target_file):
+                is_in_target = True
+
+        if is_in_target:
+            if cursor.kind in _FUNCTION_KINDS:
+                # Only add if it's the target file to avoid duplication in 'functions' list
+                # but we can relax this if we want all functions discovered
+                if os.path.abspath(cursor.location.file.name) == target_file:
+                    func_info = self._extract_function_info(cursor, current_namespace, language)
+                    functions.append(func_info)
+            
+            elif cursor.kind in _TYPE_KINDS:
+                type_info = self._extract_type_info(cursor, current_namespace)
+                types.append(type_info)
+            
+            elif cursor.kind in _MACRO_KINDS:
+                macro_info = self._extract_macro_info(cursor)
+                if macro_info:
+                    macros.append(macro_info)
 
         for child in cursor.get_children():
-            self._traverse(child, functions, target_file, current_namespace, language)
+            self._traverse(child, functions, types, macros, target_file, current_namespace, language)
+
+    def _extract_type_info(self, cursor, namespace: str) -> Dict[str, Any]:
+        """Extract info about enums, structs, classes."""
+        kind_map = {
+            clang.cindex.CursorKind.ENUM_DECL: "enum",
+            clang.cindex.CursorKind.STRUCT_DECL: "struct",
+            clang.cindex.CursorKind.CLASS_DECL: "class",
+            clang.cindex.CursorKind.UNION_DECL: "union",
+            clang.cindex.CursorKind.TYPEDEF_DECL: "typedef",
+            clang.cindex.CursorKind.TYPE_ALIAS_DECL: "type_alias",
+        }
+        
+        members = []
+        if cursor.kind == clang.cindex.CursorKind.ENUM_DECL:
+            for child in cursor.get_children():
+                if child.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
+                    members.append({
+                        "name": child.spelling,
+                        "value": child.enum_value
+                    })
+        elif cursor.kind in (clang.cindex.CursorKind.STRUCT_DECL, clang.cindex.CursorKind.CLASS_DECL):
+            for child in cursor.get_children():
+                if child.kind == clang.cindex.CursorKind.FIELD_DECL:
+                    members.append({
+                        "name": child.spelling,
+                        "type": child.type.spelling,
+                        "access": _ACCESS_MAP.get(child.access_specifier, "none")
+                    })
+
+        return {
+            "name": cursor.spelling,
+            "kind": kind_map.get(cursor.kind, "unknown"),
+            "namespace": namespace,
+            "members": members,
+            "location": {
+                "file": cursor.location.file.name if cursor.location.file else None,
+                "line": cursor.location.line,
+            }
+        }
+
+    def _extract_macro_info(self, cursor) -> Optional[Dict[str, Any]]:
+        """Extract macro definitions."""
+        if not cursor.spelling:
+            return None
+        return {
+            "name": cursor.spelling,
+            "location": {
+                "file": cursor.location.file.name if cursor.location.file else None,
+                "line": cursor.location.line,
+            }
+        }
 
     def _extract_function_info(self, cursor, namespace: str, language: str) -> Dict[str, Any]:
         """Extract rich metadata about a function or method cursor."""
@@ -144,10 +250,12 @@ class CodeAnalyzer:
         dependencies = []
         complexity = 0
         body_code = None
+        switch_cases = []
         if cursor.is_definition():
             self._extract_calls(cursor, dependencies)
             complexity = self._calculate_complexity(cursor)
             body_code = self._extract_source_code(cursor)
+            self._extract_switch_cases(cursor, switch_cases)
 
         return {
             "name": cursor.spelling,
@@ -168,7 +276,33 @@ class CodeAnalyzer:
             "body_code": body_code,
             "dependencies": dependencies,
             "complexity": complexity,
+            "switch_cases": switch_cases,
         }
+
+    def _extract_switch_cases(self, cursor, cases: List[Dict[str, Any]]):
+        """Recursively find switch statements and their cases."""
+        if cursor.kind == clang.cindex.CursorKind.SWITCH_STMT:
+            switch_info = {"cases": []}
+            self._find_cases_in_switch(cursor, switch_info["cases"])
+            cases.append(switch_info)
+
+        for child in cursor.get_children():
+            self._extract_switch_cases(child, cases)
+
+    def _find_cases_in_switch(self, cursor, case_list: List[str]):
+        """Internal helper to find CASE_STMT within a SWITCH_STMT subtree."""
+        for child in cursor.get_children():
+            if child.kind == clang.cindex.CursorKind.CASE_STMT:
+                # Try to get the case value/label
+                src = self._extract_source_code(child)
+                if src:
+                    case_label = src.split(':')[0].replace('case', '').strip()
+                    case_list.append(case_label)
+            elif child.kind == clang.cindex.CursorKind.DEFAULT_STMT:
+                case_list.append("default")
+            
+            # Continue searching in children (e.g. COMPOUND_STMT)
+            self._find_cases_in_switch(child, case_list)
 
     def _extract_source_code(self, cursor) -> Optional[str]:
         """Reads the source code for the given cursor definition."""

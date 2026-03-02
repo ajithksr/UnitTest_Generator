@@ -2,6 +2,13 @@
 // Source: {{ source_filename }}  |  Language: {{ language }}
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
+{% if has_private_protected %}
+// ─── Access Specifier Bypass (for testing private/protected members) ────────
+#define private public
+#define protected public
+{% endif %}
+
 {% if language == "C" %}
 // C source — include via extern "C" linkage
 extern "C" {
@@ -20,6 +27,38 @@ extern "C" {
 #include "{{ source_filename }}"
 {% endif %}
 {% endif %}
+
+{% if has_private_protected %}
+#undef private
+#undef protected
+{% endif %}
+
+// ─── Metadata Reference (Extracted from source) ──────────────────────────────
+/*
+{% if types %}
+Types:
+{% for t in types %}
+- {{ t.name }} ({{ t.kind }})
+{% if t.members %}
+  {% for m in t.members %}
+  {% if t.kind == 'enum' %}
+  * {{ m.name }} = {{ m.value }}
+  {% else %}
+  * {{ m.name }} ({{ m.type }})
+  {% endif %}
+  {% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if macros %}
+Macros:
+{% for m in macros %}
+- {{ m.name }}
+{% endfor %}
+{% endif %}
+*/
+
 {% if has_class and has_non_static_members %}
 // ─── Mock declarations (if any) ────────────────────────────────────────────
 {% for mock in mocks %}
@@ -60,15 +99,10 @@ protected:
 {% set kind = func.kind %}
 {% set is_static = func.is_static %}
 {% set access = func.access_specifier %}
-{% set test_macro = "TEST_F" if (has_class and has_non_static_members and not is_static and access != "private") else "TEST" %}
-{% set suite_name = class_name + "Test" if (has_class and has_non_static_members and not is_static and access != "private") else class_name + "_Global" %}
+{% set test_macro = "TEST_F" if (has_class and has_non_static_members and not is_static) else "TEST" %}
+{% set suite_name = class_name + "Test" if (has_class and has_non_static_members and not is_static) else class_name + "_Global" %}
 {% if not has_class %}{% set suite_name = "GlobalFunctions" %}{% endif %}
 
-{% if access == "private" or access == "protected" %}
-// NOTE: `{{ func.name }}` is {{ access }} — test via public API, friend class, or test-only subclass.
-// Uncomment and adapt the test below once you have a testing hook in place.
-/*
-{% endif %}
 {{ test_macro }}({{ suite_name }}, {{ func.name }}_Coverage) {
     {% if func.test_body %}
 {{ func.test_body }}
@@ -102,9 +136,6 @@ protected:
     FAIL() << "Test not implemented for {{ func.name }}";
     {% endif %}
 }
-{% if access == "private" or access == "protected" %}
-*/
-{% endif %}
 
 {% endif %}
 {% endfor %}

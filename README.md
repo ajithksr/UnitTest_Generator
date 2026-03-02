@@ -4,35 +4,21 @@ An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps
 
 ---
 
-## Features
+## 🚀 Key Enhancements
 
-- **C and C++ AST Analysis**: Parses `.c`, `.h`, `.cpp`, `.hpp`, `.cxx`, `.hh` files using `libclang`. Detects:
-  - Free functions (C and C++)
-  - Class member methods (public / protected / private)
-  - Static methods and file-static C functions
-  - Constructors and destructors
-- **Optimized Test Strategy**: Uses an LLM as a "Test Architect" to identify a **minimal but robust** set of logic-aware scenarios, avoiding brute-force permutations while ensuring critical paths and boundaries are covered.
-- **Legacy C & Static Function Support**: Automatically detects static functions. For legacy C, it supports testing file-static functions by optionally including the source file directly in the test suite.
-- **Recursive Directory Scanning**: Batch process entire codebases with a single command to generate strategies for all source files.
-- **Boundary & Equivalence Partition Test Planning**: Automatically generates test cases per parameter type:
-  - `int`/`long`/`uint*` → INT_MIN/MAX, 0, ±1
-  - `float`/`double` → numeric_limits, NaN, ±Inf, -0.0
-  - Pointers → nullptr/NULL, dangling pointer note
-  - `char*` / `std::string` → empty, very long, special characters
-  - `bool` → true / false
-- **MCDC Coverage Planning**: Estimates cyclomatic complexity and flags paths that need coverage.
-- **Coverage Mapping**: Compares source functions against existing tests (regex-based) and identifies gaps.
-- **Mock / Failure Injection Strategy**: Lists external dependencies and suggests failure injection scenarios.
-- **Agentic Test Generation**: Uses OpenAI, Gemini, or locally-running Ollama to generate complete test bodies guided by the strategy.
-- **Smart Template Rendering**:
-  - `extern "C" { #include "..." }` automatically emitted for C source files.
-  - `#include "source.c"` automatically emitted when testing static C functions.
-  - `TEST_F(...)` fixture for public member methods; `TEST(...)` for static/free functions.
-  - Private/protected methods wrapped in commented-out stubs with a testing approach note.
+- **Modular LLM Client Architecture**: Decoupled providers for **Ollama**, **Gemini**, **OpenAI**, and **Mock** (for testing/verification). Select your backend via `LLM_PROVIDER`.
+- **Rich Code Analysis**: Full-depth extraction of **Enums**, **Structs**, **Unions**, **Classes**, and **#define macros**.
+- **Switch-Case Awareness**: Recursively identifies switch-case values (including enum labels) to ensure comprehensive branch coverage strategies.
+- **Private & Protected Testing**: Implements a macro-based access bypass (`#define private public`) in generated tests, enabling direct verification of internal state and private methods.
+- **Existing Test Strategy Analysis**: Uses LLM to "reverse engineer" the strategy behind existing unit tests, aggregating findings from multiple test files and mapping them back to source functions.
+- **Smart Strategy Comparison**: Compares needed technical strategies (boundaries, MCDC, mocks) against already covered strategies to highlight missing gaps.
+- **Automated Directory Organization**:
+  - 📝 **Test Strategies**: Automatically saved to `./TestStrategy/` (YAML and Markdown).
+  - 🛠️ **Generated Tests**: New test files are automatically saved to `./GeneratedUT/`.
 
 ---
 
-## Installation
+## 🛠️ Installation
 
 ### Prerequisites
 
@@ -46,122 +32,81 @@ An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps
 pip install -r requirements.txt
 ```
 
-Configure your LLM provider via a `.env` file (copy from `.env.example`):
+Configure your LLM provider via a `.env` file:
 
 ```env
-# Choose one:
-LLM_PROVIDER=ollama          # local Ollama (default / recommended)
-# LLM_API_KEY=sk-...         # OpenAI
-# LLM_API_KEY=AIza...        # Google Gemini
-
-OLLAMA_MODEL=qwen2.5-coder:7b
+LLM_PROVIDER=gemini          # ollama, gemini, openai, mock
+LLM_API_KEY=AIza...          # Required for Gemini/OpenAI
+OLLAMA_MODEL=qwen2.5-coder:7b # Required for Ollama
 ```
-
-> If no API key is provided and Ollama is not running, the tool falls back to a **Mock provider** that generates placeholder stubs.
 
 ---
 
-## Usage
+## 📖 Usage
 
 ### 1. Analyze a Source File
-
-Accepts both C (`.c`) and C++ (`.cpp`, `.cxx`) files.
+Analyzes a source file, identifies coverage gaps (scanning the workspace for tests), and generates a strategy.
 
 ```bash
-python3 main.py analyze <source_file> [--test-file <existing_test_file>]
+python3 main.py analyze <source_file>
 ```
 
-**Examples:**
-```bash
-# C source
-python3 main.py analyze tests/fixtures/SimpleCalc.c
-
-# C++ source with existing tests
-python3 main.py analyze tests/fixtures/SimpleMath.cpp --test-file tests/fixtures/SimpleMathTest.cpp
-```
+- **Output**: `./TestStrategy/<source>_strategy.md` & `.yaml`
 
 ### 2. Batch Scan a Directory
-
 Recursively scan a directory for all C/C++ files and generate strategies.
 
 ```bash
-python3 main.py scan <directory> [--output-dir strategies]
+python3 main.py scan <directory>
 ```
 
 ### 3. Generate Test Code
+Generates C++ Google Test code from a strategy file.
 
 ```bash
-python3 main.py generate <strategy_file> <output_file>
+python3 main.py generate <strategy_file>
 ```
 
-**Example:**
-```bash
-python3 main.py generate tests/fixtures/SimpleMath_strategy.yaml tests/fixtures/SimpleMath_generated.cpp
-```
+- **Output**: `./GeneratedUT/<source>_test.cpp`
 
 ---
 
-## Test Strategy Details
-
-Each function's strategy includes:
-
-| Section | Content |
-|---|---|
-| **Unified Scenarios** | Logic-aware, optimized test cases identified by LLM |
-| **Boundary Cases** | Per-parameter: INT_MIN/MAX, nullptr, empty string, NaN, etc. |
-| **Equivalence Partitions** | Per-parameter: valid partition, invalid partition, zero/border |
-| **MCDC Requirements** | Paths needed based on cyclomatic complexity |
-| **Mocks Needed** | Dependencies flagged for failure injection |
-| **Private/Protected** | Guidance: test via public API, friend class, or test subclass |
-| **Static / Legacy C** | Automatic source inclusion for testing file-static functions |
-
----
-
-## Project Structure
+## 🏗️ Project Structure
 
 ```
 .
-├── main.py                       # CLI entry point (analyze / scan / generate)
+├── main.py                       # CLI entry point
 ├── src/
-│   ├── analyzer.py               # libclang AST analysis (C + C++)
-│   ├── strategy.py               # Strategy planner with boundary/EP logic
-│   ├── generator.py              # Jinja2 test code scaffolding
-│   ├── llm_client.py             # OpenAI / Gemini / Ollama / Mock providers
-│   └── test_parser.py            # Regex-based existing test discovery
+│   ├── analyzer.py               # Rich AST analysis (Types, Macros, Switch-cases)
+│   ├── strategy.py               # Strategy planner & existing test aggregator
+│   ├── generator.py              # Test code generation engine
+│   ├── llm_client.py             # LLM Factory (Provider selection)
+│   ├── test_parser.py            # Test body extractor & LLM strategy analyzer
+│   └── llm/                      # Modular LLM Providers
+│       ├── base.py, ollama.py, gemini.py, openai.py, mock.py
 ├── templates/
-│   ├── test_framework.j2         # C/C++ gtest/gmock test template
-│   └── CMakeLists.txt.j2         # CMake build template
-├── tests/
-│   └── fixtures/
-│       ├── SimpleCalc.c / .h     # C fixture (free functions, pointer, double)
-│       ├── SimpleMath.cpp / .hpp # C++ fixture (public, static, protected, private)
-│       └── SimpleMathTest.cpp    # Existing test reference
-└── scripts/
-    └── verify_pipeline.py        # Interactive CMake build + test + coverage runner
+│   └── test_framework.j2         # GTest template with private access bypass
+├── TestStrategy/                 # Default output for strategies
+└── GeneratedUT/                  # Default output for generated tests
 ```
 
 ---
 
-## Verification
+## 🧪 Verification
 
-Verify generated tests via the interactive pipeline script (requires `cmake`, `g++`, `lcov`):
+Verify generated tests via the interactive pipeline script:
 
 ```bash
-# Install build tools if needed
-sudo apt install cmake g++ lcov
-
-# Run the pipeline
 python3 scripts/verify_pipeline.py <source_file> <generated_test_file>
 ```
 
 ---
 
-## LLM Provider Selection
+## 🤖 LLM Providers
 
-| Priority | Provider | Trigger |
+| Provider | Requirement | Description |
 |---|---|---|
-| 1 | Ollama | `LLM_PROVIDER=ollama` in `.env` |
-| 2 | Gemini | `LLM_API_KEY` starts with `AIza` |
-| 3 | OpenAI | `LLM_API_KEY` starts with `sk-` |
-| 4 | Auto Ollama | Ollama detected running at `localhost:11434` |
-| 5 | Mock | Fallback — generates placeholder stubs |
+| **Ollama** | `LLM_PROVIDER=ollama` | Local LLM execution (Privacy-focused) |
+| **Gemini** | `LLM_PROVIDER=gemini` | High-performance reasoning via Google AI |
+| **OpenAI** | `LLM_PROVIDER=openai` | Industry-standard Reasoning |
+| **Mock** | `LLM_PROVIDER=mock` | Zero-cost verification of tool logic |

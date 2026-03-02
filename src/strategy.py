@@ -1,7 +1,10 @@
 import yaml
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 import os
+
+from .prompts import TEST_MAPPING_PROMPT
 
 # ---------------------------------------------------------------------------
 # Boundary & Equivalence Partition helpers
@@ -105,6 +108,7 @@ class FunctionStrategy:
     line: int
     is_covered: bool
     existing_tests: List[str]
+    existing_test_details: List[Dict[str, Any]] = field(default_factory=list) # Includes body and strategy
     class_name: Optional[str] = None
     namespace: Optional[str] = None
     language: str = "C++"
@@ -115,12 +119,15 @@ class FunctionStrategy:
     technical_baseline: Dict[str, List[str]] = field(default_factory=dict)  # Hidden baseline for reference
     mocks_needed: List[str] = field(default_factory=list)
     mcdc_cases: List[str] = field(default_factory=list)
+    switch_cases: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
 class FileStrategy:
     source_file: str
     functions: List[FunctionStrategy] = field(default_factory=list)
+    types: List[Dict[str, Any]] = field(default_factory=list)
+    macros: List[Dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +140,7 @@ class StrategyGenerator:
 
     def generate_strategy(
         self,
-        file_functions: List[Dict[str, Any]],
+        analysis_results: Dict[str, Any],
         existing_tests: List[Dict[str, Any]],
         llm_client: Optional[Any] = None,
     ) -> FileStrategy:
@@ -141,26 +148,31 @@ class StrategyGenerator:
         Compares analyzed functions with existing tests and generates a rich strategy,
         including boundary and equivalence partition test cases.
         """
-        source_file = (
-            file_functions[0]["location"]["file"] if file_functions else "unknown"
+        file_functions = analysis_results.get("functions", [])
+        source_file = analysis_results.get("file", "unknown")
+        
+        # Sort functions by name as requested
+        file_functions = sorted(file_functions, key=lambda x: x["name"])
+        
+        strategy = FileStrategy(
+            source_file=source_file,
+            types=analysis_results.get("types", []),
+            macros=analysis_results.get("macros", [])
         )
-        strategy = FileStrategy(source_file=source_file)
 
+        unassigned_tests = existing_tests[:]
+        function_mappings = {} # func_name -> list of tests
+
+        # 1. First Pass: Simple Name-Based Matching
         for func in file_functions:
             func_name = func["name"]
             class_name = func.get("class_name")
             namespace = func.get("namespace")
-            language = func.get("language", "C++")
-            kind = func.get("kind", "free_function")
-            is_static = func.get("is_static", False)
-            access_specifier = func.get("access_specifier", "none")
-            parameters = func.get("parameters", [])
-
-            # ------------------------------------------------------------------
-            # Match against existing tests
-            # ------------------------------------------------------------------
-            matched_tests = []
-            for test in existing_tests:
+            
+            matched_for_this_func = []
+            remaining_unassigned = []
+            
+            for test in unassigned_tests:
                 suite_matches = False
                 if class_name and class_name.lower() in test["suite_name"].lower():
                     suite_matches = True
@@ -170,10 +182,54 @@ class StrategyGenerator:
                 name_matches = func_name.lower() in test["test_name"].lower()
 
                 if suite_matches and name_matches:
-                    matched_tests.append(test["full_name"])
-                elif name_matches:
-                    matched_tests.append(test["full_name"] + " (Weak Match)")
+                    matched_for_this_func.append(test)
+                else:
+                    remaining_unassigned.append(test)
+            
+            function_mappings[func_name] = matched_for_this_func
+            unassigned_tests = remaining_unassigned
 
+        # 2. Second Pass: LLM-Based Matching for remaining unassigned tests
+        if llm_client and unassigned_tests and file_functions:
+            print(f"[INFO] Attempting to map {len(unassigned_tests)} unassigned tests using LLM...")
+            # Prepare a list of function names and signatures
+            func_list = [f"{f['name']} ({f['signature']})" for f in file_functions]
+            test_list = [f"{t['full_name']} (Body: {t['body'] if len(t['body']) < 200 else t['body'][:200] + '...'})" for t in unassigned_tests]
+            
+            mapping_prompt = TEST_MAPPING_PROMPT.format(
+                functions=json.dumps(func_list, indent=2),
+                tests=json.dumps(test_list, indent=2)
+            )
+            try:
+                response = llm_client.provider.generate_code(mapping_prompt)
+                import re
+                json_match = re.search(r'\{.*\}', response.strip(), re.DOTALL)
+                if json_match:
+                    llm_mapping = json.loads(json_match.group(0))
+                    for test_fullname, func_target in llm_mapping.items():
+                        # Find the test and function
+                        target_test = next((t for t in existing_tests if t["full_name"] == test_fullname), None)
+                        if target_test and func_target in function_mappings:
+                            if target_test not in function_mappings[func_target]:
+                                function_mappings[func_target].append(target_test)
+                                print(f"[INFO] LLM Mapped {test_fullname} -> {func_target}")
+            except Exception as e:
+                print(f"[WARN] LLM Test Mapping failed: {e}")
+
+        # 3. Build Final Function Strategy Objects
+        for func in file_functions:
+            func_name = func["name"]
+            class_name = func.get("class_name")
+            namespace = func.get("namespace")
+            language = func.get("language", "C++")
+            kind = func.get("kind", "free_function")
+            is_static = func.get("is_static", False)
+            access_specifier = func.get("access_specifier", "none")
+            parameters = func.get("parameters", [])
+            switch_cases = func.get("switch_cases", [])
+
+            matched_tests = function_mappings.get(func_name, [])
+            matched_test_names = [t["full_name"] for t in matched_tests]
             is_covered = len(matched_tests) > 0
 
             # ------------------------------------------------------------------
@@ -181,6 +237,11 @@ class StrategyGenerator:
             # ------------------------------------------------------------------
             boundary_cases, ep_cases = _generate_boundary_ep_cases(parameters)
             
+            if switch_cases:
+                for sw in switch_cases:
+                    for case in sw.get("cases", []):
+                        boundary_cases.append(f"Switch Case: {case}")
+
             mocks = []
             for dep in func.get("dependencies", []):
                 if dep:
@@ -197,7 +258,9 @@ class StrategyGenerator:
                 "boundary_cases": boundary_cases,
                 "equivalence_partition_cases": ep_cases,
                 "mocks_needed": mocks,
-                "mcdc_cases": mcdc_cases
+                "mcdc_cases": mcdc_cases,
+                "types": strategy.types,
+                "macros": strategy.macros
             }
 
             # ------------------------------------------------------------------
@@ -206,6 +269,14 @@ class StrategyGenerator:
             suggested_cases = []
             body_code = func.get("body_code")
             if llm_client and body_code:
+                # Add existing test strategies for comparison
+                existing_strat_summary = []
+                for t in matched_tests:
+                    if t.get("strategy"):
+                        existing_strat_summary.extend(t["strategy"])
+                
+                technical_context["existing_strategies"] = existing_strat_summary
+
                 print(f"[INFO] Identifying unified master strategy for {func_name} using LLM...")
                 llm_cases = llm_client.identify_test_strategy(
                     func["signature"], body_code, language, technical_context
@@ -213,7 +284,6 @@ class StrategyGenerator:
                 if llm_cases:
                     suggested_cases.extend(llm_cases)
             
-            # Default fallback if LLM failed
             if not suggested_cases:
                 if not is_covered:
                     suggested_cases.extend(boundary_cases)
@@ -224,7 +294,6 @@ class StrategyGenerator:
                 else:
                     suggested_cases = ["Additional Verification"]
 
-            # Special case notes (Access specifiers, static)
             if access_specifier in ("private", "protected"):
                 suggested_cases.append(f"NOTE: Test via public API or test subclass (Access: {access_specifier})")
             if is_static:
@@ -242,11 +311,13 @@ class StrategyGenerator:
                 is_static=is_static,
                 access_specifier=access_specifier,
                 is_covered=is_covered,
-                existing_tests=matched_tests,
+                existing_tests=matched_test_names,
+                existing_test_details=matched_tests,
                 mocks_needed=mocks,
                 suggested_test_cases=suggested_cases,
                 technical_baseline=technical_context,
                 mcdc_cases=mcdc_cases,
+                switch_cases=switch_cases,
             )
             strategy.functions.append(f_strat)
 
@@ -285,6 +356,22 @@ class StrategyGenerator:
                 f"| {func.language} | {status} | {complexity} |"
             )
 
+        if strategy.types:
+            lines.append("\n## Types (Enums, Structs, Classes)\n")
+            for t in strategy.types:
+                lines.append(f"- **{t['name']}** ({t['kind']})")
+                if t.get('members'):
+                    for m in t['members']:
+                        if t['kind'] == 'enum':
+                            lines.append(f"  - `{m['name']} = {m.get('value')}`")
+                        else:
+                            lines.append(f"  - `{m['name']}` ({m.get('type')})")
+
+        if strategy.macros:
+            lines.append("\n## Macros (#define)\n")
+            for m in strategy.macros:
+                lines.append(f"- `{m['name']}`")
+
         lines.append("\n## Detailed Strategy per Function\n")
 
         for func in strategy.functions:
@@ -299,14 +386,22 @@ class StrategyGenerator:
             lines.append(f"- **Access:** `{func.access_specifier}`")
 
             if func.existing_tests:
-                lines.append("- **Existing Tests:**")
-                for test in func.existing_tests:
-                    lines.append(f"  - {test}")
+                lines.append("- **Existing Tests & Analyzed Strategies:**")
+                for test in func.existing_test_details:
+                    lines.append(f"  - **{test['full_name']}** (`{os.path.basename(test['location']['file'])}:{test['location']['line']}`)")
+                    if test.get("strategy"):
+                        for s in test["strategy"]:
+                            lines.append(f"    - [Existing] {s}")
 
             if func.suggested_test_cases:
-                lines.append("- **Unified Test Scenarios:**")
+                lines.append("- **Needed / Suggested Test Scenarios:**")
                 for case in func.suggested_test_cases:
-                    lines.append(f"  - {case}")
+                    lines.append(f"  - [Add] {case}")
+
+            if func.switch_cases:
+                lines.append("- **Switch Cases found:**")
+                for sw in func.switch_cases:
+                    lines.append(f"  - Cases: {', '.join(sw['cases'])}")
 
             if func.mocks_needed:
                 lines.append("- **Mocks Needed:**")

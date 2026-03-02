@@ -21,36 +21,65 @@ def analyze(source_file: str, test_file: str = None):
     console.print(f"[bold green]Analyzing Source:[/bold green] {source_file}")
     analyzer = CodeAnalyzer()
     try:
-        source_funcs = analyzer.analyze_file(source_file)
+        analysis_results = analyzer.analyze_file(source_file)
+        source_funcs = analysis_results["functions"]
     except FileNotFoundError:
         console.print(f"[bold red]Error:[/bold red] Source file not found: {source_file}")
         raise typer.Exit(code=1)
     
-    console.print(f"Found {len(source_funcs)} functions.")
+    console.print(f"Found {len(source_funcs)} functions, {len(analysis_results['types'])} types, and {len(analysis_results['macros'])} macros.")
 
     # 2. Analyze Tests
     existing_tests = []
-    if test_file and os.path.exists(test_file):
-        console.print(f"[bold green]Analyzing Tests:[/bold green] {test_file}")
-        test_parser = TestAnalyzer()
-        existing_tests = test_parser.analyze_test_file(test_file)
-        console.print(f"Found {len(existing_tests)} existing tests.")
+    test_files = []
+    if test_file:
+        if os.path.isdir(test_file):
+            for root, _, files in os.walk(test_file):
+                for f in files:
+                    if f.endswith((".cpp", ".cc", ".cxx", ".c")):
+                        test_files.append(os.path.join(root, f))
+        else:
+            test_files.append(test_file)
     else:
-        console.print("[yellow]No test file provided or found. Assuming 0 coverage.[/yellow]")
+        # Heuristic: look for tests in ./tests or same dir
+        base_name = os.path.splitext(os.path.basename(source_file))[0]
+        search_dirs = ["./tests", "./test", os.path.dirname(source_file)]
+        for sd in search_dirs:
+            if os.path.exists(sd):
+                for f in os.listdir(sd):
+                    if base_name.lower() in f.lower() and f.endswith((".cpp", ".cc", ".cxx", ".c")) and f != os.path.basename(source_file):
+                        test_files.append(os.path.join(sd, f))
+
+    if test_files:
+        console.print(f"[bold green]Analyzing {len(test_files)} Test Files:[/bold green]")
+        test_parser = TestAnalyzer()
+        llm_client = LLMClient()
+        for tf in test_files:
+            console.print(f"  - {tf}")
+            found_tests = test_parser.analyze_test_file(tf)
+            test_parser.analyze_test_strategies(found_tests, llm_client)
+            existing_tests.extend(found_tests)
+        console.print(f"Found {len(existing_tests)} existing tests in total.")
+    else:
+        console.print("[yellow]No test files found. Assuming 0 coverage.[/yellow]")
 
     # 3. Generate Strategy
     llm_client = LLMClient()
     generator = StrategyGenerator()
-    strategy = generator.generate_strategy(source_funcs, existing_tests, llm_client=llm_client)
+    strategy = generator.generate_strategy(analysis_results, existing_tests, llm_client=llm_client)
     
     # 4. Save Artifacts
-    output_base = os.path.splitext(source_file)[0]
-    yaml_path = f"{output_base}_strategy.yaml"
+    strategy_dir = "./TestStrategy"
+    if not os.path.exists(strategy_dir):
+        os.makedirs(strategy_dir)
+        
+    output_base = os.path.splitext(os.path.basename(source_file))[0]
+    yaml_path = os.path.join(strategy_dir, f"{output_base}_strategy.yaml")
     
     generator.save_yaml(strategy, yaml_path)
     console.print(f"[bold blue]Strategy Saved (YAML):[/bold blue] {yaml_path}")
     
-    md_path = f"{output_base}_strategy.md"
+    md_path = os.path.join(strategy_dir, f"{output_base}_strategy.md")
     generator.save_markdown(strategy, md_path)
     console.print(f"[bold blue]Strategy Saved (MD):[/bold blue] {md_path}")
     
@@ -68,7 +97,7 @@ def analyze(source_file: str, test_file: str = None):
     console.print(table)
 
 @app.command()
-def scan(directory: str, output_dir: str = "strategies"):
+def scan(directory: str, output_dir: str = "TestStrategy"):
     """
     Recursively scans a directory for C/C++ files and generates test strategies for all.
     """
@@ -101,14 +130,15 @@ def scan(directory: str, output_dir: str = "strategies"):
     for file_path in files_to_process:
         console.print(f"\n[bold green]Processing:[/bold green] {file_path}")
         try:
-            source_funcs = analyzer.analyze_file(file_path)
+            analysis_results = analyzer.analyze_file(file_path)
+            source_funcs = analysis_results["functions"]
             if not source_funcs:
                 console.print(f"[yellow]No functions found in {file_path}. Skipping.[/yellow]")
                 continue
 
             # For batch scan, we don't look for specific test files yet unless they follow a pattern
             # Future: pattern match file.cpp -> file_test.cpp
-            strategy = strategy_gen.generate_strategy(source_funcs, [], llm_client=llm_client)
+            strategy = strategy_gen.generate_strategy(analysis_results, [], llm_client=llm_client)
             
             rel_path = os.path.relpath(file_path, directory)
             output_base = os.path.join(output_dir, rel_path.replace(os.sep, "_"))
@@ -124,10 +154,19 @@ def scan(directory: str, output_dir: str = "strategies"):
             console.print(f"[bold red]Error processing {file_path}:[/bold red] {e}")
 
 @app.command()
-def generate(strategy_file: str, output_file: str):
+def generate(strategy_file: str, output_file: str = None):
     """
     Generates C++ test code from a strategy file.
     """
+    if not output_file:
+        ut_dir = "./GeneratedUT"
+        if not os.path.exists(ut_dir):
+            os.makedirs(ut_dir)
+        
+        # Derive name from strategy file
+        base = os.path.basename(strategy_file).replace("_strategy.yaml", "_test.cpp")
+        output_file = os.path.join(ut_dir, base)
+
     console.print(f"[bold green]Generating Tests from:[/bold green] {strategy_file}")
     generator = TestGenerator()
     try:

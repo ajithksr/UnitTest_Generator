@@ -18,6 +18,9 @@ class TestGenerator:
             strategy_data = yaml.safe_load(f)
 
         functions = strategy_data.get("functions", [])
+        types = strategy_data.get("types", [])
+        macros = strategy_data.get("macros", [])
+        
         if not functions:
             print("No functions in strategy.")
             return
@@ -31,6 +34,7 @@ class TestGenerator:
             if func.get("language"):
                 language = func["language"]
                 break
+        
         if language == "C":
             header_filename = source_filename.replace(".c", ".h")
         else:
@@ -44,10 +48,11 @@ class TestGenerator:
         # Collect class/namespace info
         target_class = None
         target_namespace = None
-        mocks = set()
+        all_mocks = set()
         has_non_static_members = False
-
         has_static_functions = False
+        has_private_protected = False
+
         for func in functions:
             if func.get("class_name") and not target_class:
                 target_class = func["class_name"]
@@ -60,10 +65,13 @@ class TestGenerator:
             
             if func.get("is_static"):
                 has_static_functions = True
+            
+            if func.get("access_specifier") in ("private", "protected"):
+                has_private_protected = True
 
             for mock in func.get("mocks_needed", []):
                 if mock and "Mock for " in mock and len(mock) > 9:
-                    mocks.add(mock)
+                    all_mocks.add(mock)
 
             # LLM Generation for uncovered functions
             if use_llm and not func.get("is_covered"):
@@ -79,6 +87,9 @@ class TestGenerator:
                         "is_static": func.get("is_static", False),
                         "access_specifier": func.get("access_specifier", "none"),
                         "kind": func.get("kind", "free_function"),
+                        "types": types,
+                        "macros": macros,
+                        "switch_cases": func.get("switch_cases", [])
                     }
                     body = self.llm_client.generate_test_body(func["signature"], func_strategy)
                     func["test_body"] = body
@@ -94,8 +105,11 @@ class TestGenerator:
             "has_class": target_class is not None,
             "has_non_static_members": has_non_static_members,
             "has_static_functions": has_static_functions,
+            "has_private_protected": has_private_protected,
             "functions": functions,
-            "mocks": list(mocks),
+            "mocks": list(all_mocks),
+            "types": types,
+            "macros": macros
         }
 
         code = self.render(context, "test_framework.j2")
