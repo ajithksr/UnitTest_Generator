@@ -2,6 +2,9 @@
 // Source: {{ source_filename }}  |  Language: {{ language }}
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <climits>
+#include <iostream>
+#include <algorithm>
 
 {% if has_private_protected %}
 // ─── Access Specifier Bypass (for testing private/protected members) ────────

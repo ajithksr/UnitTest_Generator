@@ -89,7 +89,9 @@ class TestGenerator:
                         "kind": func.get("kind", "free_function"),
                         "types": types,
                         "macros": macros,
-                        "switch_cases": func.get("switch_cases", [])
+                        "switch_cases": func.get("switch_cases", []),
+                        "return_type": func.get("return_type", "void"),
+                        "body_code": func.get("body_code", "")
                     }
                     body = self.llm_client.generate_test_body(func["signature"], func_strategy)
                     func["test_body"] = body
@@ -118,6 +120,20 @@ class TestGenerator:
             f.write(code)
 
         print(f"Generated test code: {output_file}")
+
+    def generate_cmake(self, source_file: str, test_file: str, output_file: str = "CMakeLists.txt"):
+        """Generates a CMakeLists.txt for the source and test file."""
+        import os
+        project_name = os.path.splitext(os.path.basename(source_file))[0]
+        context = {
+            "project_name": project_name,
+            "source_file": os.path.abspath(source_file),
+            "test_file": os.path.abspath(test_file)
+        }
+        code = self.render(context, "CMakeLists.txt.j2")
+        with open(output_file, "w") as f:
+            f.write(code)
+        print(f"Generated CMake configuration: {output_file}")
 
     def render(self, context: Dict[str, Any], template_name: str = "test_framework.j2") -> str:
         template = self.env.get_template(template_name)

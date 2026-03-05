@@ -21,13 +21,21 @@ _POINTER_TYPES_SUFFIX = ("*", "* const", "const *")
 _BOOL_TYPES = {"bool"}
 
 
+def _clean_type(type_str: str) -> str:
+    """Helper to strip const, volatile, and reference decorations for lookup."""
+    import re
+    # Remove const, volatile, and & / &&
+    cleaned = re.sub(r'\b(const|volatile)\b', '', type_str)
+    cleaned = re.sub(r'&\s*&?', '', cleaned)
+    # Remove extra spaces
+    return " ".join(cleaned.split()).lower()
+
+
 def _boundary_cases_for_type(param_name: str, type_str: str) -> List[str]:
     """Return boundary-condition test case descriptions for a single parameter."""
     t = type_str.strip().lower()
+    bare = _clean_type(t)
     cases = []
-
-    # Strip const / reference decoration for lookup
-    bare = t.replace("const", "").replace("&", "").replace("volatile", "").strip()
 
     if bare in _INT_TYPES or any(bare.startswith(it) for it in _INT_TYPES):
         cases.append(f"Boundary [{param_name}]: INT_MIN / INT_MAX (overflow edge)")
@@ -55,7 +63,7 @@ def _boundary_cases_for_type(param_name: str, type_str: str) -> List[str]:
 def _equivalence_cases_for_type(param_name: str, type_str: str) -> List[str]:
     """Return equivalence partition test case descriptions for a single parameter."""
     t = type_str.strip().lower()
-    bare = t.replace("const", "").replace("&", "").replace("volatile", "").strip()
+    bare = _clean_type(t)
     cases = []
 
     if bare in _INT_TYPES or any(bare.startswith(it) for it in _INT_TYPES):
@@ -106,6 +114,7 @@ class FunctionStrategy:
     signature: str
     file: str
     line: int
+    return_type: str
     is_covered: bool
     existing_tests: List[str]
     existing_test_details: List[Dict[str, Any]] = field(default_factory=list) # Includes body and strategy
@@ -120,6 +129,7 @@ class FunctionStrategy:
     mocks_needed: List[str] = field(default_factory=list)
     mcdc_cases: List[str] = field(default_factory=list)
     switch_cases: List[Dict[str, Any]] = field(default_factory=list)
+    body_code: str = ""
 
 
 @dataclass
@@ -226,6 +236,7 @@ class StrategyGenerator:
             is_static = func.get("is_static", False)
             access_specifier = func.get("access_specifier", "none")
             parameters = func.get("parameters", [])
+            return_type = func.get("return_type", "void")
             switch_cases = func.get("switch_cases", [])
 
             matched_tests = function_mappings.get(func_name, [])
@@ -310,6 +321,7 @@ class StrategyGenerator:
                 kind=kind,
                 is_static=is_static,
                 access_specifier=access_specifier,
+                return_type=return_type,
                 is_covered=is_covered,
                 existing_tests=matched_test_names,
                 existing_test_details=matched_tests,
@@ -318,6 +330,7 @@ class StrategyGenerator:
                 technical_baseline=technical_context,
                 mcdc_cases=mcdc_cases,
                 switch_cases=switch_cases,
+                body_code=func.get("body_code", ""),
             )
             strategy.functions.append(f_strat)
 

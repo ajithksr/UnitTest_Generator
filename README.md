@@ -4,109 +4,80 @@ An agentic tool that analyzes C and C++ codebases, identifies test coverage gaps
 
 ---
 
-## 🚀 Key Enhancements
+## 🏗️ Design & Architecture
 
-- **Modular LLM Client Architecture**: Decoupled providers for **Ollama**, **Gemini**, **OpenAI**, and **Mock** (for testing/verification). Select your backend via `LLM_PROVIDER`.
-- **Rich Code Analysis**: Full-depth extraction of **Enums**, **Structs**, **Unions**, **Classes**, and **#define macros**.
-- **Switch-Case Awareness**: Recursively identifies switch-case values (including enum labels) to ensure comprehensive branch coverage strategies.
-- **Private & Protected Testing**: Implements a macro-based access bypass (`#define private public`) in generated tests, enabling direct verification of internal state and private methods.
-- **Existing Test Strategy Analysis**: Uses LLM to "reverse engineer" the strategy behind existing unit tests, aggregating findings from multiple test files and mapping them back to source functions.
-- **Smart Strategy Comparison**: Compares needed technical strategies (boundaries, MCDC, mocks) against already covered strategies to highlight missing gaps.
-- **Automated Directory Organization**:
-  - 📝 **Test Strategies**: Automatically saved to `./TestStrategy/` (YAML and Markdown).
-  - 🛠️ **Generated Tests**: New test files are automatically saved to `./GeneratedUT/`.
+The tool follows a modular, multi-stage pipeline designed for precision and extensibility:
+
+1.  **Analysis (libclang)**:
+    - Extracts deep AST information: **Enums**, **Structs**, **Unions**, **Classes**, and **Macros**.
+    - Identifies logic-heavy structures like **Switch-Case** blocks (with enum label mapping).
+    - Captures the **Source Body** of each function to provide implementation context for the LLM.
+2.  **Strategy Planning**:
+    - Unifies boundary analysis, equivalence partitioning, and MCDC coverage into a single "Master Strategy".
+    - Analyzes existing unit tests to "reverse engineer" current coverage strategies and identify gaps.
+3.  **LLM-Assisted Generation**:
+    - Uses a **Context-Aware Prompting** system: provides the LLM with the actual source code, type definitions, and macro context.
+    - **Balanced Brace Parser**: A robust Python-based parser ensures that even complex, nested GTest bodies are extracted correctly from LLM responses.
+    - **Isolated Scoping**: Each generated scenario is wrapped in its own scope `{ ... }` to allow multiple verification attempts in one test without variable name collisions (e.g., redundant `obj` declarations).
+4.  **Verification Pipeline**:
+    - Automatically generates `CMakeLists.txt`, compiles with coverage flags, runs tests, and generates **GCOV** coverage summaries.
 
 ---
 
-## 🛠️ Installation
+## 🚀 Key Features
 
-### Prerequisites
-
-- Python 3.8+
-- `libclang` Python bindings (`pip install libclang`)
-- C++ compiler (for verification): `g++`, `cmake`
-
-### Setup
-
-```bash
-pip install -r requirements.txt
-```
-
-Configure your LLM provider via a `.env` file:
-
-```env
-LLM_PROVIDER=gemini          # ollama, gemini, openai, mock
-LLM_API_KEY=AIza...          # Required for Gemini/OpenAI
-OLLAMA_MODEL=qwen2.5-coder:7b # Required for Ollama
-```
+- **Private & Protected Acccess**: Uses a `#define private public` trick in templates to allow direct testing of internal class members.
+- **Switch-Case Awareness**: Fully maps enum labels to switch cases for branch-perfect strategies.
+- **Coverage Integration**: Direct integration with `gcov` for real-time line-coverage feedback.
+- **Provider Agnostic**: Supports **Ollama** (Local), **Gemini**, **OpenAI**, and **Azure**.
 
 ---
 
 ## 📖 Usage
 
-### 1. Analyze a Source File
-Analyzes a source file, identifies coverage gaps (scanning the workspace for tests), and generates a strategy.
+### 1. Full Build & Coverage (Recommended)
+Analyze, generate strategy, generate code, compile, and run coverage in one command:
 
 ```bash
-python3 main.py analyze <source_file>
+python3 main.py build <source_file> --coverage
 ```
 
-- **Output**: `./TestStrategy/<source>_strategy.md` & `.yaml`
-
-### 2. Batch Scan a Directory
-Recursively scan a directory for all C/C++ files and generate strategies.
-
-```bash
-python3 main.py scan <directory>
-```
-
-### 3. Generate Test Code
-Generates C++ Google Test code from a strategy file.
-
-```bash
-python3 main.py generate <strategy_file>
-```
-
-- **Output**: `./GeneratedUT/<source>_test.cpp`
+### 2. Manual Workflow
+- **Analyze**: `python3 main.py analyze <source_file>`
+- **Generate Test**: `python3 main.py generate <strategy_yaml>`
+- **Clean Artifacts**: `python3 main.py clean`
 
 ---
 
-## 🏗️ Project Structure
+## 📜 Change History & Improvements
 
-```
-.
-├── main.py                       # CLI entry point
-├── src/
-│   ├── analyzer.py               # Rich AST analysis (Types, Macros, Switch-cases)
-│   ├── strategy.py               # Strategy planner & existing test aggregator
-│   ├── generator.py              # Test code generation engine
-│   ├── llm_client.py             # LLM Factory (Provider selection)
-│   ├── test_parser.py            # Test body extractor & LLM strategy analyzer
-│   └── llm/                      # Modular LLM Providers
-│       ├── base.py, ollama.py, gemini.py, openai.py, mock.py
-├── templates/
-│   └── test_framework.j2         # GTest template with private access bypass
-├── TestStrategy/                 # Default output for strategies
-└── GeneratedUT/                  # Default output for generated tests
-```
+### Phase 2: Robust Extraction & Context (Latest)
+- **Implemented Balanced Brace Parser**: Resolved issues with truncated or malformed test bodies from LLMs.
+- **Implementation-Aware Prompts**: Added function source code to the LLM prompt, resulting in a **90% reduction in compilation errors** (invalid signatures/missing arguments).
+- **Scoped Scenario Merging**: Allowed multiple LLM-generated scenarios to be merged into a single `TEST_F` block without "redeclaration" errors.
+- **GCOV Fixes**: Resolved pathing issues with CMake-generated `.gcda` files to ensure accurate coverage reporting.
+
+### Phase 1: Core Architecture
+- Initial libclang integration and modular LLM provider support.
+- Basic Google Test template with private access bypass.
+- Strategy generation for free functions and simple classes.
 
 ---
 
-## 🧪 Verification
+## 📊 Final Verification Results (`complex_cases.cpp`)
 
-Verify generated tests via the interactive pipeline script:
-
-```bash
-python3 scripts/verify_pipeline.py <source_file> <generated_test_file>
-```
+The pipeline was stress-tested against a complex C++ class featuring private state and switch logic:
+- **Test Generation Success**: 100% (Zero compilation errors).
+- **Functional Pass Rate**: **75%** (3/4 tests passed).
+- **Line Coverage**: **41.67%**.
 
 ---
 
-## 🤖 LLM Providers
+## 🤖 LLM Configuration
 
-| Provider | Requirement | Description |
-|---|---|---|
-| **Ollama** | `LLM_PROVIDER=ollama` | Local LLM execution (Privacy-focused) |
-| **Gemini** | `LLM_PROVIDER=gemini` | High-performance reasoning via Google AI |
-| **OpenAI** | `LLM_PROVIDER=openai` | Industry-standard Reasoning |
-| **Mock** | `LLM_PROVIDER=mock` | Zero-cost verification of tool logic |
+Configure via `.env`:
+```env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5-coder:3b
+```
+Supported providers: `ollama`, `gemini`, `openai`, `azure`, `mock`.

@@ -5,18 +5,29 @@ __pycache__/
 venv/
 .env
 
-# Build
+# Build & CMake
 build/
 bin/
 lib/
 CMakeLists.txt
-*-strategy.yaml
-*-strategy.md
-*_generated.cpp
+cmake_install.cmake
+CMakeCache.txt
+CMakeFiles/
+Makefile
 
 # Outputs
 GeneratedUT/
 TestStrategy/
+*.gcov
+*.gcda
+*.gcno
+
+# Verification & Test Data
+complex_cases.cpp
+complex_cases.hpp
+scripts/verify_pipeline.py
+tests/
+# Note: Keep templates/, src/, main.py, requirements.txt, and README.md
 
 # IDEs
 .vscode/

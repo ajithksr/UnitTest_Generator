@@ -28,7 +28,7 @@ class OllamaProvider(LLMProvider):
             "options": {"temperature": 0.2},
         }
         try:
-            response = requests.post(url, json=payload, timeout=120)
+            response = requests.post(url, json=payload, timeout=300)
             if response.status_code == 200:
                 result = response.json()
                 text = result.get("response", "")

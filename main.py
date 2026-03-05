@@ -176,5 +176,103 @@ def generate(strategy_file: str, output_file: str = None):
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=1)
 
+@app.command()
+def build(source_file: str, test_file: str = None, run: bool = True, coverage: bool = False):
+    """
+    Generates CMakeLists.txt, builds the test, and optionally runs it with coverage.
+    """
+    if not test_file:
+        # Heuristic to find generated test if not provided
+        base = os.path.splitext(os.path.basename(source_file))[0]
+        test_file = f"./GeneratedUT/{base}_test.cpp"
+    
+    if not os.path.exists(test_file):
+        console.print(f"[bold red]Error:[/bold red] Test file not found: {test_file}")
+        raise typer.Exit(code=1)
+
+    console.print(f"[bold green]Generating CMake for:[/bold green] {source_file} and {test_file}")
+    generator = TestGenerator()
+    generator.generate_cmake(source_file, test_file)
+
+    # Build process
+    build_dir = "./build"
+    if not os.path.exists(build_dir):
+        os.makedirs(build_dir)
+    
+    import subprocess
+    
+    console.print("[bold cyan]Running CMake...[/bold cyan]")
+    ret = subprocess.call(["cmake", ".."], cwd=build_dir)
+    if ret != 0:
+        console.print("[bold red]CMake failed.[/bold red]")
+        raise typer.Exit(code=1)
+    
+    console.print("[bold cyan]Running Make...[/bold cyan]")
+    ret = subprocess.call(["make"], cwd=build_dir)
+    if ret != 0:
+        console.print("[bold red]Make failed.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if run:
+        # Identify the executable name from project name
+        proj_name = os.path.splitext(os.path.basename(source_file))[0]
+        exe_path = f"./{proj_name}_test"
+        
+        console.print(f"[bold green]Running Tests:[/bold green] {exe_path}")
+        ret = subprocess.call([exe_path], cwd=build_dir)
+        
+        if coverage:
+            console.print("[bold green]Generating Coverage (gcov)...[/bold green]")
+            # Direct way: run gcov on the .gcda file which CMake puts in build/CMakeFiles/PROJ_test.dir/
+            # The gcda name might be "source.cpp.gcda" instead of just "source.gcda"
+            gcda_file = os.path.join(build_dir, "CMakeFiles", f"{proj_name}_test.dir", f"{source_file}.gcda")
+            if not os.path.exists(gcda_file):
+                # Try fallback: just the basename
+                 gcda_file = os.path.join(build_dir, "CMakeFiles", f"{proj_name}_test.dir", f"{os.path.basename(source_file)}.gcda")
+
+            if os.path.exists(gcda_file):
+                subprocess.call(["gcov", gcda_file], cwd=os.getcwd())
+            else:
+                console.print(f"[bold red][WARN] GCDA file not found at {gcda_file}. Coverage might fail.[/bold red]")
+                # Last resort fallback: original way
+                subprocess.call(["gcov", "-o", f"CMakeFiles/{proj_name}_test.dir/", os.path.abspath(source_file)], cwd=build_dir)
+            
+            # Find the generated .gcov file in the current working directory
+            gcov_file = os.path.basename(source_file) + ".gcov"
+            if os.path.exists(gcov_file):
+                console.print(f"[bold blue]Coverage detail saved to:[/bold blue] {os.path.abspath(gcov_file)}")
+                # Print a small summary if possible
+                with open(gcov_file, "r") as f:
+                    lines = f.readlines()
+                    hits = 0
+                    total = 0
+                    for line in lines:
+                        if ":" in line:
+                            parts = line.split(":")
+                            count = parts[0].strip()
+                            if count.isdigit():
+                                hits += 1
+                                total += 1
+                            elif count == "#####": # Not covered
+                                total += 1
+                    if total > 0:
+                        percent = (hits / total) * 100
+                        console.print(f"[bold yellow]Estimated Line Coverage: {percent:.2f}% ({hits}/{total} lines)[/bold yellow]")
+            else:
+                console.print("[yellow]Could not find .gcov file. Ensure the executable was executed and linked correctly.[/yellow]")
+
+@app.command()
+def clean():
+    """Cleans build and strategy artifacts."""
+    import shutil
+    dirs = ["./build", "./TestStrategy", "./GeneratedUT"]
+    for d in dirs:
+        if os.path.exists(d):
+            console.print(f"Removing {d}...")
+            shutil.rmtree(d)
+    if os.path.exists("CMakeLists.txt"):
+        os.remove("CMakeLists.txt")
+    console.print("[bold green]Cleanup complete.[/bold green]")
+
 if __name__ == "__main__":
     app()
